@@ -15,6 +15,7 @@
 #include "unitsel.h"
 #include "fe_rules.h"
 #include "voice.h"
+#include "fe_vm.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -759,6 +760,70 @@ static void t_misc(int iter) {
     check("identity32", iter, "EAX", &i1, &i2, 4);
 }
 
+// the rule machine's tape routines, every instance, on fresh random tapes
+static int vm_skips;
+static void t_vm(int iter) {
+    static const uint32_t fr[3] = { 0x6368d725, 0x63691765, 0x63694ca9 }, fl[3] = { 0x6368d822, 0x63691862, 0x63694da6 },
+        fp[3] = { 0x6368f4b2, 0x6369350d, 0x63696a54 }, fu[3] = { 0x6368f68c, 0x636936e7, 0x63696c2e },
+        fs[3] = { 0x6368e4cf, 0x636924fa, 0x63695a41 };
+    int k = iter % 3;
+    const RuleVM *vm = &rule_vm[k];
+    uint32_t save[8], gt[6];
+    for (int q = 0; q < 6; q++) {
+        gt[q] = galloc(300);
+        for (int i = 0; i < 300; i++) ((uint8_t *)gp(gt[q], 300))[i] = (uint8_t)(rnd() % 20);
+        save[q] = rd32(C, gaddr(vm->tape[q])); wr32(C, gaddr(vm->tape[q]), gt[q]);
+    }
+    uint16_t stop; memcpy(&stop, gp(gaddr(vm->top), 2), 2);
+    int16_t top = (int16_t)rndi(100, 250); memcpy(gp(gaddr(vm->top), 2), &top, 2);
+    #define REGS() do { for (int q = 0; q < 6; q++) reg_add(gt[q], 300); reg_add(gaddr(vm->top), 2); } while (0)
+    int16_t lo = (int16_t)rndi(3, 80), hi = (int16_t)(lo + rndi(-3, 60));
+    uint32_t a[2] = { (uint32_t)(int32_t)lo, (uint32_t)(int32_t)hi };
+    REGS(); call(fr[k], 2, a); reg_save(); vm_shift_right(vm, lo, hi); reg_check("vm_shift_right", iter);
+    C->s.r[EAX] = rnd(); uint32_t pe = C->s.r[EAX];
+    REGS(); uint32_t e1 = call(fl[k], 2, a); reg_save(); uint32_t e2 = vm_shift_left(vm, lo, hi, pe);
+    reg_check("vm_shift_left", iter); check("vm_shift_left", iter, "EAX", &e1, &e2, 4);
+    int16_t pa = (int16_t)rndi(3, 60), pb = (int16_t)(pa + rndi(-2, 30));
+    uint32_t b[2] = { (uint32_t)(int32_t)pa, (uint32_t)(int32_t)pb };
+    REGS(); call(fp[k], 2, b); reg_save(); vm_pop_range(vm, pa, pb); reg_check("vm_pop_range", iter);
+    // push_until needs a 0x0e below the top
+    ((uint8_t *)gp(gt[0], 300))[top - 1 + rndi(0, 20)] = 0x0e;
+    uint32_t ps = (uint32_t)rndi(0, 30);
+    REGS(); uint32_t u1 = call(fu[k], 1, &ps); reg_save(); uint32_t u2 = (uint32_t)vm_push_until(vm, (int32_t)ps);
+    reg_check("vm_push_until", iter); check("vm_push_until", iter, "EAX", &u1, &u2, 4);
+    // skip_block over structured bytecode: filler, nested tok,1 ... tok,0 blocks, then tok,end
+    uint8_t tok = (iter & 4) ? 0xf5 : (uint8_t)rndi(20, 60), end = (uint8_t)rndi(2, 9);
+    uint32_t gcode = galloc(400);
+    uint8_t *code = gp(gcode, 400);
+    int n = 0, depth = 0;
+    while (n < 150) {
+        uint32_t r = rnd() % 10;
+        if (r == 0 && n < 140) { code[n++] = tok; code[n++] = (tok == 0xf5) ? (uint8_t)rndi(1, 3) : 1; depth++; }
+        else if (r == 1 && depth) { code[n++] = tok; code[n++] = 0; code[n++] = (uint8_t)rndi(61, 120); depth--; }
+        else code[n++] = (uint8_t)rndi(61, 120);
+    }
+    while (depth--) { code[n++] = tok; code[n++] = 0; code[n++] = (uint8_t)rndi(61, 120); }
+    code[n++] = tok; code[n++] = end; code[n++] = tok; code[n++] = 0;
+    uint32_t spc = rd32(C, gaddr(vm->pc));
+    wr32(C, gaddr(vm->pc), gcode);
+    uint32_t sa[2] = { tok, end };
+    reg_add(gaddr(vm->pc), 4);
+    emu_set_insn_budget(E, 5000000);
+    uint32_t k1 = call(fs[k], 2, sa);
+    emu_set_insn_budget(E, 0);
+    if (E->failed) { fprintf(stderr, "vm_skip_block case %d: the original did not finish\n", iter); exit(1); }
+    {
+        reg_save();
+        uint32_t k2 = vm_skip_block(vm, tok, end);
+        reg_check("vm_skip_block", iter); check("vm_skip_block", iter, "EAX", &k1, &k2, 4);
+        vm_skips++;
+    }
+    wr32(C, gaddr(vm->pc), spc);
+    for (int q = 0; q < 6; q++) wr32(C, gaddr(vm->tape[q]), save[q]);
+    memcpy(gp(gaddr(vm->top), 2), &stop, 2);
+    #undef REGS
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -787,10 +852,11 @@ int main(int argc, char **argv) {
         t_tapes(it);
         t_rate(it);
         t_misc(it);
+        t_vm(it);
         if (it < 500) t_viterbi(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
-    printf("unit: %d checks, %d mismatches\n", cases, fails);
+    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases)\n", cases, fails, vm_skips);
     return fails ? 1 : 0;
 }

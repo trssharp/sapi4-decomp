@@ -14,6 +14,7 @@
 #include "fe_small.h"
 #include "fe_rules.h"
 #include "queue.h"
+#include "fe_vm.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -331,3 +332,18 @@ void hk_voc_send_audio(Emu *e, X86 *c) { voc_send_audio(THIS(VocEngine), A(0) ? 
 void hk_identity32(Emu *e, X86 *c) { E_RET(identity32(A(0))); }
 void hk_voc_thread_loop(Emu *e, X86 *c) { E_RET(voc_thread_loop(THIS(VocEngine))); }
 void hk_voc_thread_proc(Emu *e, X86 *c) { E_RET(voc_thread_loop(GPH(VocEngine, A(0), sizeof(VocEngine)))); }
+void hk_vm_shift_right_0(Emu *e, X86 *c) { vm_shift_right(&rule_vm[0], (int16_t)A(0), (int16_t)A(1)); }
+void hk_vm_shift_right_1(Emu *e, X86 *c) { vm_shift_right(&rule_vm[1], (int16_t)A(0), (int16_t)A(1)); }
+void hk_vm_shift_right_2(Emu *e, X86 *c) { vm_shift_right(&rule_vm[2], (int16_t)A(0), (int16_t)A(1)); }
+void hk_vm_shift_left_0(Emu *e, X86 *c) { E_RET(vm_shift_left(&rule_vm[0], (int16_t)A(0), (int16_t)A(1), c->s.r[EAX])); }
+void hk_vm_shift_left_1(Emu *e, X86 *c) { E_RET(vm_shift_left(&rule_vm[1], (int16_t)A(0), (int16_t)A(1), c->s.r[EAX])); }
+void hk_vm_shift_left_2(Emu *e, X86 *c) { E_RET(vm_shift_left(&rule_vm[2], (int16_t)A(0), (int16_t)A(1), c->s.r[EAX])); }
+void hk_vm_pop_range_0(Emu *e, X86 *c) { vm_pop_range(&rule_vm[0], (int16_t)A(0), (int16_t)A(1)); }
+void hk_vm_pop_range_1(Emu *e, X86 *c) { vm_pop_range(&rule_vm[1], (int16_t)A(0), (int16_t)A(1)); }
+void hk_vm_pop_range_2(Emu *e, X86 *c) { vm_pop_range(&rule_vm[2], (int16_t)A(0), (int16_t)A(1)); }
+void hk_vm_push_until_0(Emu *e, X86 *c) { E_RET(vm_push_until(&rule_vm[0], AI(0))); }
+void hk_vm_push_until_1(Emu *e, X86 *c) { E_RET(vm_push_until(&rule_vm[1], AI(0))); }
+void hk_vm_push_until_2(Emu *e, X86 *c) { E_RET(vm_push_until(&rule_vm[2], AI(0))); }
+void hk_vm_skip_block_0(Emu *e, X86 *c) { E_RET(vm_skip_block(&rule_vm[0], (uint8_t)A(0), (uint8_t)A(1))); }
+void hk_vm_skip_block_1(Emu *e, X86 *c) { E_RET(vm_skip_block(&rule_vm[1], (uint8_t)A(0), (uint8_t)A(1))); }
+void hk_vm_skip_block_2(Emu *e, X86 *c) { E_RET(vm_skip_block(&rule_vm[2], (uint8_t)A(0), (uint8_t)A(1))); }
