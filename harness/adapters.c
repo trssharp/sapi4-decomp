@@ -11,6 +11,7 @@
 #include "containers.h"
 #include "senone.h"
 #include "unitsel.h"
+#include "fe_small.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -231,3 +232,27 @@ void hk_unit_prosody(Emu *e, X86 *c) {
 }
 void hk_unit_prosody_a(Emu *e, X86 *c) { unit_prosody_a(THIS(UnitStage), AI(0)); }
 void hk_unit_prosody_b(Emu *e, X86 *c) { unit_prosody_b(THIS(UnitStage), AI(0)); }
+
+#define SPAN THIS(TextSpan)
+void hk_span_f4(Emu *e, X86 *c) { E_RET(span_f4(SPAN)); }
+void hk_span_pos(Emu *e, X86 *c) { E_RET(span_pos(SPAN)); }
+void hk_span_len(Emu *e, X86 *c) { E_RET(span_len(SPAN)); }
+void hk_span_f10(Emu *e, X86 *c) { E_RET(span_f10(SPAN)); }
+void hk_span_cur(Emu *e, X86 *c) { E_RET(host_to_guest(span_cur(SPAN))); }
+// the byte getters load AL over another value: EAX keeps that value's upper bits, as in the original
+void hk_span_first(Emu *e, X86 *c) { const TextSpan *s = SPAN; E_RET((s->buf & ~0xffu) | (uint8_t)span_first(s)); }
+void hk_span_last(Emu *e, X86 *c) { const TextSpan *s = SPAN; E_RET(((uint32_t)(s->pos + s->len) & ~0xffu) | (uint8_t)span_last(s)); }
+void hk_span_set_pos(Emu *e, X86 *c) { E_RET(host_to_guest(span_set_pos(SPAN, AI(0)))); }
+void hk_span_set_len(Emu *e, X86 *c) { E_RET(host_to_guest(span_set_len(SPAN, AI(0)))); }
+void hk_span_set_f10(Emu *e, X86 *c) { E_RET(host_to_guest(span_set_f10(SPAN, AI(0)))); }
+void hk_span_clear(Emu *e, X86 *c) { E_RET(host_to_guest(span_clear(SPAN))); }
+void hk_span_pair_reset(Emu *e, X86 *c) { E_RET(host_to_guest(span_pair_reset(GPH(TextSpan, c->s.r[ECX], 0x24)))); }
+void hk_pair_reset(Emu *e, X86 *c) { pair_reset(THIS(Pair)); }
+void hk_block8_clear(Emu *e, X86 *c) { block8_clear(THIS(Block8)); E_RET(0); }
+void hk_no_op_false8(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)no_op_false8()); }
+void hk_no_op_zero8(Emu *e, X86 *c) { E_RET(no_op_zero8()); }
+void hk_free_cdecl(Emu *e, X86 *c) { free_cdecl(A(0) ? (void *)x86_ptr(c, A(0), 1) : NULL); }
+void hk_free_if(Emu *e, X86 *c) { E_RET(free_if(A(0) ? (void *)x86_ptr(c, A(0), 1) : NULL)); }
+void hk_is_digit_char(Emu *e, X86 *c) { E_RET(is_digit_char((char)A(0))); }
+void hk_char_class16(Emu *e, X86 *c) { E_RET(char_class16((uint16_t)A(0))); }
+void hk_freelist_push(Emu *e, X86 *c) { freelist_push(GPH(FreeNode, A(0), sizeof(FreeNode))); E_RET(A(0)); }
