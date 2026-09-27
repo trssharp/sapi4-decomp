@@ -156,3 +156,8 @@ int emu_scan(Emu *e, const char *str, const char *fmt, uint32_t va);
 
 typedef struct { const char *dll, *name; EmuHostFn fn; int argbytes; } ApiDef;
 void emu_add_apis(const ApiDef *defs, int n);
+
+// shared with the decompiled code's Win32 layer (harness/win32.c)
+int emu_wait_poll(Emu *e, uint32_t n, const uint32_t *hs, int all, uint32_t timeout, uint32_t *ret);
+void emu_wait_block_state(Emu *e, uint32_t timeout);
+int emu_cs_try_enter(Emu *e, uint32_t cs);

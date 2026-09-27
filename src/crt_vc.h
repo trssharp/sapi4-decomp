@@ -20,3 +20,17 @@ void vc_sleep(uint32_t ms);
 #ifdef DECOMP_HOOK
 void decomp_warn(const char *msg);
 #endif
+
+// The Win32 synchronisation and messaging calls the engine's thread plumbing makes. Handles and window
+// handles are opaque 32-bit values. The hook build performs exactly what the emulator's KERNEL32/USER32
+// do (blocking ones park the calling guest thread: only from HOOKY hooks); a single-threaded portable
+// build gets trivial versions.
+void vc_EnterCriticalSection(void *cs);
+void vc_LeaveCriticalSection(void *cs);
+int32_t vc_SetEvent(uint32_t h);
+int32_t vc_ResetEvent(uint32_t h);
+uint32_t vc_WaitForSingleObject(uint32_t h, uint32_t ms);
+uint32_t vc_WaitForMultipleObjects(uint32_t n, const uint32_t *hs, int all, uint32_t ms);
+int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp);
+int32_t vc_SetThreadPriority(uint32_t h, int32_t prio);
+void vc_DebugBreak(void);

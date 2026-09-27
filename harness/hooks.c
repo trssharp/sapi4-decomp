@@ -83,6 +83,12 @@ void decomp_coro_run(Emu *e, X86 *c, EmuHostFn fn) {
     }
 }
 
+int decomp_in_coro(void) { return cur_coro != NULL; }
+void decomp_coro_block(void) {
+    Coro *co = cur_coro;
+    co->req = REQ_BLOCK;
+    swapcontext(&co->ctx, &co->back);
+}
 static void coro_suspend(int req) {
     Coro *co = cur_coro;
     co->req = req;

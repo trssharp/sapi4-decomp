@@ -35,3 +35,5 @@ void decomp_report(Emu *e);
 
 // runs a hook's adapter on this guest thread's coroutine (HOOKY hooks, see hooks.c)
 void decomp_coro_run(Emu *e, X86 *c, EmuHostFn fn);
+int decomp_in_coro(void);
+void decomp_coro_block(void);   // park this coroutine; the guest thread's blocked state must be set first

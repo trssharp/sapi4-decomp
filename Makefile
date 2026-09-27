@@ -6,7 +6,7 @@ CC ?= clang
 CFLAGS ?= -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fno-builtin -DDECOMP_HOOK
 EMU = emu/x86.c emu/emu.c emu/crt.c emu/winapi.c emu/ole.c emu/registry.c emu/sapi4_tts.c
 DECOMP = $(wildcard src/*.c)
-HOOKS = harness/hooks.c harness/hooktab.c harness/adapters.c harness/guest.c
+HOOKS = harness/hooks.c harness/hooktab.c harness/adapters.c harness/guest.c harness/win32.c
 HDR = $(wildcard emu/*.h) $(wildcard src/*.h) harness/hooks.h
 
 all: build/sapi4_speak

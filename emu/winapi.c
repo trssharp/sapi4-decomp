@@ -122,16 +122,21 @@ static void h_GetUserNameA(Emu *e, X86 *c) {
 // CRITICAL_SECTION: +0 DebugInfo, +4 LockCount, +8 RecursionCount, +12 OwningThread, +16 LockSemaphore, +20 SpinCount
 static void h_InitializeCriticalSection(Emu *e, X86 *c) { (void)e; memset(emu_ptr(e, A(0), 24), 0, 24); wr32(c, A(0) + 4, 0xFFFFFFFFu); }
 static void h_DeleteCriticalSection(Emu *e, X86 *c) { (void)e; (void)c; }
-static void h_EnterCriticalSection(Emu *e, X86 *c) {
-    uint32_t cs = A(0);
+// 1 = entered; 0 = owned by another thread (the caller blocks and retries)
+int emu_cs_try_enter(Emu *e, uint32_t cs) {
+    X86 *c = &e->cpu;
     uint32_t owner = rd32(c, cs + 12);
     uint32_t me = (uint32_t)e->cur->id;
     if (owner == 0 || owner == me) {
         wr32(c, cs + 12, me);
         wr32(c, cs + 8, rd32(c, cs + 8) + 1);
         wr32(c, cs + 4, rd32(c, cs + 4) + 1);
-        return;
+        return 1;
     }
+    return 0;
+}
+static void h_EnterCriticalSection(Emu *e, X86 *c) {
+    if (emu_cs_try_enter(e, A(0))) return;
     e->cur->state = T_BLOCKED;
     e->cur->gen = e->gen;
     e->cur->wake_at = 0;
@@ -176,39 +181,48 @@ static int is_signaled(Handle *p) {
 }
 static void consume(Handle *p) { if (p->type == H_EVENT && !p->manual) p->signaled = 0; }
 
-static void wait_block(Emu *e, X86 *c, uint32_t timeout) {
-    (void)c;
+// Wait logic shared with the decompiled code (harness/win32.c): 1 = done (*ret set), 0 = must block.
+int emu_wait_poll(Emu *e, uint32_t n, const uint32_t *hs, int all, uint32_t timeout, uint32_t *ret) {
+    Thread *t = e->cur;
+    if (n == 0 || n > 64) { *ret = WAIT_FAILED; return 1; }
+    if (all) {
+        int ok = 1;
+        for (uint32_t i = 0; i < n; i++) if (!is_signaled(emu_handle(e, hs[i]))) ok = 0;
+        if (ok) { for (uint32_t i = 0; i < n; i++) consume(emu_handle(e, hs[i])); t->timed_out = 0; *ret = WAIT_OBJECT_0; return 1; }
+    } else {
+        for (uint32_t i = 0; i < n; i++) {
+            Handle *p = emu_handle(e, hs[i]);
+            if (!p) { *ret = WAIT_FAILED; return 1; }
+            if (is_signaled(p)) { consume(p); t->timed_out = 0; *ret = WAIT_OBJECT_0 + i; return 1; }
+        }
+    }
+    if (timeout == 0 || t->timed_out) { t->timed_out = 0; *ret = WAIT_TIMEOUT; return 1; }
+    return 0;
+}
+// the thread state of a blocked wait (the caller then stops the CPU: emu_block, or a parked coroutine)
+void emu_wait_block_state(Emu *e, uint32_t timeout) {
     Thread *t = e->cur;
     t->state = T_BLOCKED;
     t->gen = e->gen;
     t->wake_at = timeout == INFINITE ? 0 : e->vtime + (timeout ? timeout : 1);
+}
+static void wait_block(Emu *e, X86 *c, uint32_t timeout) {
+    (void)c;
+    emu_wait_block_state(e, timeout);
     emu_block(e);
 }
 static void h_WaitForSingleObject(Emu *e, X86 *c) {
-    uint32_t h = A(0), timeout = A(1);
-    Thread *t = e->cur;
-    Handle *p = emu_handle(e, h);
-    if (!p) { E_RET(WAIT_FAILED); return; }
-    if (is_signaled(p)) { consume(p); t->timed_out = 0; E_RET(WAIT_OBJECT_0); return; }
-    if (timeout == 0 || t->timed_out) { t->timed_out = 0; E_RET(WAIT_TIMEOUT); return; }
+    uint32_t h = A(0), timeout = A(1), r;
+    // (a single handle: WAIT_FAILED for a bad handle, as before)
+    if (emu_wait_poll(e, 1, &h, 0, timeout, &r)) { E_RET(r); return; }
     wait_block(e, c, timeout);
 }
 static void h_WaitForMultipleObjects(Emu *e, X86 *c) {
-    uint32_t n = A(0), arr = A(1), all = A(2), timeout = A(3);
-    Thread *t = e->cur;
+    uint32_t n = A(0), arr = A(1), all = A(2), timeout = A(3), r;
+    uint32_t hs[64];
     if (n == 0 || n > 64) { E_RET(WAIT_FAILED); return; }
-    if (all) {
-        int ok = 1;
-        for (uint32_t i = 0; i < n; i++) if (!is_signaled(emu_handle(e, rd32(c, arr + 4 * i)))) ok = 0;
-        if (ok) { for (uint32_t i = 0; i < n; i++) consume(emu_handle(e, rd32(c, arr + 4 * i))); t->timed_out = 0; E_RET(WAIT_OBJECT_0); return; }
-    } else {
-        for (uint32_t i = 0; i < n; i++) {
-            Handle *p = emu_handle(e, rd32(c, arr + 4 * i));
-            if (!p) { E_RET(WAIT_FAILED); return; }
-            if (is_signaled(p)) { consume(p); t->timed_out = 0; E_RET(WAIT_OBJECT_0 + i); return; }
-        }
-    }
-    if (timeout == 0 || t->timed_out) { t->timed_out = 0; E_RET(WAIT_TIMEOUT); return; }
+    for (uint32_t i = 0; i < n; i++) hs[i] = rd32(c, arr + 4 * i);
+    if (emu_wait_poll(e, n, hs, (int)all, timeout, &r)) { E_RET(r); return; }
     wait_block(e, c, timeout);
 }
 static void h_Sleep(Emu *e, X86 *c) {

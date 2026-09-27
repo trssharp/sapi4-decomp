@@ -52,6 +52,15 @@ void *vc_malloc(size_t n) { return malloc(n); }
 void vc_free(void *p) { free(p); }
 void *vc_realloc(void *p, size_t n) { return realloc(p, n); }
 void vc_sleep(uint32_t ms) { (void)ms; }
+void vc_EnterCriticalSection(void *cs) { (void)cs; }
+void vc_LeaveCriticalSection(void *cs) { (void)cs; }
+int32_t vc_SetEvent(uint32_t h) { (void)h; return 1; }
+int32_t vc_ResetEvent(uint32_t h) { (void)h; return 1; }
+uint32_t vc_WaitForSingleObject(uint32_t h, uint32_t ms) { (void)h; (void)ms; return 0; }
+uint32_t vc_WaitForMultipleObjects(uint32_t n, const uint32_t *hs, int all, uint32_t ms) { (void)n; (void)hs; (void)all; (void)ms; return 0; }
+int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) { (void)hwnd; (void)msg; (void)wp; (void)lp; return 1; }
+int32_t vc_SetThreadPriority(uint32_t h, int32_t prio) { (void)h; (void)prio; return 1; }
+void vc_DebugBreak(void) {}
 static _Thread_local uint32_t vc_seed = 1;
 int vc_rand(void) {
     vc_seed = vc_seed * 214013u + 2531011u;
