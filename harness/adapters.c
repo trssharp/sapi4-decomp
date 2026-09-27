@@ -10,6 +10,7 @@
 #include "tags.h"
 #include "containers.h"
 #include "senone.h"
+#include "unitsel.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -220,3 +221,5 @@ void hk_senone_lookup(Emu *e, X86 *c) {
     E_RET(senone_lookup(GPH(SenoneTree, A(0), sizeof(SenoneTree)), AI(1), AI(2), AI(3), AI(4), AI(5)));
 }
 void hk_phone_fixups(Emu *e, X86 *c) { int n = AI(1); phone_fixups(n > 0 ? GPH(char, A(0), 100u * n) : NULL, n); }
+
+void hk_unit_select(Emu *e, X86 *c) { int n = AI(1); unit_select(THIS(UnitStage), n > 0 ? GPH(char, A(0), 100u * n + 1) : (char *)c->mem + A(0), n); }

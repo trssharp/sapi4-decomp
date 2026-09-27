@@ -26,7 +26,7 @@ int senone_lookup(const SenoneTree *t, int cur, int left, int right, int pos, in
     default: return -2;
     }
     if (t->ignore_position) p = 8;
-    const GPTR(const char) *names = GP(GPTR(const char), ps->names);
+    GPTR(const char) *names = GP(GPTR(const char), ps->names);
     if (is_sil(GP(const char, names[left]))) left = t->sil;
     const char *rn = GP(const char, names[right]);
     if (is_sil(rn)) right = t->sil;

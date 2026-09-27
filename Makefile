@@ -6,7 +6,7 @@ CC ?= clang
 CFLAGS ?= -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fno-builtin -DDECOMP_HOOK
 EMU = emu/x86.c emu/emu.c emu/crt.c emu/winapi.c emu/ole.c emu/registry.c emu/sapi4_tts.c
 DECOMP = $(wildcard src/*.c)
-HOOKS = harness/hooks.c harness/hooktab.c harness/adapters.c
+HOOKS = harness/hooks.c harness/hooktab.c harness/adapters.c harness/guest.c
 HDR = $(wildcard emu/*.h) $(wildcard src/*.h) harness/hooks.h
 
 all: build/sapi4_speak
@@ -54,4 +54,5 @@ hookdiff: build/sapi4_speak
 # src/ must also compile as the portable build (real pointers, no emulator)
 portable-check:
 	$(CC) -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror -fsyntax-only src/*.c
+	@echo "functions the portable build still needs (called through harness/guest.c):"; grep -o 'guest_call(0x[0-9a-f]*' harness/guest.c | sort -u
 .PHONY: portable-check
