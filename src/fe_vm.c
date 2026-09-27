@@ -98,3 +98,76 @@ int32_t vm_move(const RuleVM *vm, int32_t a, int32_t b, int32_t d) {
     }
     return b + d;
 }
+
+const CondVM cond_vm[3] = {
+    { 0x637392e0, 0x63739284, 0x6373927c, 0x6373933c, 0x63739204, 0x636a1cd8, 0x636a0750, 0x63738ce0,
+      0x636a1ed6, 0x636a1d7a, 0x636a07f2, 0x63721ccc, 1 },
+    { 0x637394a8, 0x6373944c, 0x63739448, 0x63739504, 0x637393dc, 0x636a4eb8, 0x636a3238, 0x637393c4,
+      0x636a522e, 0x636a4f5a, 0x636a32da, 0x63721f2c, 0 },
+    { 0x63739688, 0x6373962c, 0x63739628, 0x637396e4, 0x637395bc, 0x636ab308, 0x636a7c98, 0x63739590,
+      0x636abea6, 0x636ab3aa, 0x636a7d3a, 0x63721f7c, 0 },
+};
+
+uint32_t vm_cond(const CondVM *vm, uint8_t end, int32_t pos) {
+    GPTR(uint8_t) *PCv = DLLVAR(GPTR(uint8_t), vm->pc);
+    uint8_t *pc = GP(uint8_t, *PCv);
+    if (vm->pos16) pos = (int16_t)pos;
+#define RET(r) return ((uint32_t)GRAW(*PCv) & ~0xffu) | (r)   // (pc == *PCv at every return)
+    if (pc[0] == end) RET(1u);
+    GPTR(char) saved = *DLLVAR(GPTR(char), vm->saved);
+    GPTR(char) cur = *DLLVAR(GPTR(char), vm->cur);
+    uint8_t ch = *DLLVAR(uint8_t, vm->ch);
+    const uint8_t *vars = DLLVAR(const uint8_t, vm->vars);
+    for (;;) {
+        uint8_t op = pc[0], arg = pc[1];
+        switch (op) {
+        case 0xef: case 0xf1:
+            saved = cur;
+            *DLLVAR(GPTR(char), vm->saved) = saved;
+            cur = DLLVAR(GPTR(char), vm->tapes)[arg];
+            *DLLVAR(GPTR(char), vm->cur) = cur;
+            ch = (uint8_t)GP(char, cur)[pos];
+            *DLLVAR(uint8_t, vm->ch) = ch;
+            break;
+        case 0xee: case 0xf0:
+            cur = saved;
+            *DLLVAR(GPTR(char), vm->cur) = cur;
+            ch = (uint8_t)GP(char, saved)[pos];
+            *DLLVAR(uint8_t, vm->ch) = ch;
+            break;
+        case 0xf2: if (arg == ch) RET(0u); break;
+        case 0xf3: if (arg != ch) RET(0u); break;
+        case 0xf9: if (DLLVAR(const uint8_t, vm->t1)[arg * 0xa2 + ch]) RET(0u); break;
+        case 0xfa: if (!DLLVAR(const uint8_t, vm->t1)[arg * 0xa2 + ch]) RET(0u); break;
+        case 0xfb: if (DLLVAR(const uint8_t, vm->t2)[arg * 0xa2 + ch]) RET(0u); break;
+        case 0xfc: if (!DLLVAR(const uint8_t, vm->t2)[arg * 0xa2 + ch]) RET(0u); break;
+        case 0xfd: {
+            uint8_t v = vars[arg];
+            if (v) {
+                if (ch != v) RET(0u);
+                break;
+            }
+            const uint8_t *cl = DLLVAR(const uint8_t, vm->cls) + arg * 2;
+            if (cl[0] == 4) {
+                if (!DLLVAR(const uint8_t, vm->t4)[cl[1] * 0xa2 + ch]) RET(0u);
+            } else if (cl[0] == 5) {
+                if (!DLLVAR(const uint8_t, vm->t3)[cl[1] * 0xa2 + ch]) RET(0u);
+            }
+            *DLLVAR(int16_t, vm->bound) = 1;
+            DLLVAR(uint8_t, vm->vars)[arg] = ch;
+            break;
+        }
+        case 0xea: {
+            uint8_t v = vars[arg];
+            if (v && ch == v) RET(0u);
+            break;
+        }
+        default:
+            for (;;) {}   // (the original spins here; see the header)
+        }
+        pc += 2;
+        GPSET(*PCv, pc);
+        if (pc[0] == end) RET(1u);
+    }
+#undef RET
+}

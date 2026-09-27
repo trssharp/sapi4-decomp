@@ -28,3 +28,25 @@ uint32_t vm_skip_block(const RuleVM *vm, uint8_t tok, uint8_t end);
 // towards the start, adding tape 5 into the destination). Returns b + d. (32-bit arguments of which
 // the original uses the low halves in places.)
 int32_t vm_move(const RuleVM *vm, int32_t a, int32_t b, int32_t d);
+
+// the condition interpreter's globals and tables (per instance)
+typedef struct CondVM {
+    uint32_t pc;            // bytecode pointer global
+    uint32_t saved;         // the previous tape (char * global)
+    uint32_t cur;           // the current tape
+    uint32_t ch;            // the current character (byte global)
+    uint32_t tapes;         // array of the tape pointer globals, indexed by operand
+    uint32_t t1, t2;        // class tables, 0xa2 bytes per class, indexed by character
+    uint32_t vars;          // variable bytes (0: unbound)
+    uint32_t cls;           // per variable: kind (4 or 5) and class
+    uint32_t t3, t4;        // the classes a variable of kind 5 / 4 must match
+    uint32_t bound;         // int16 global set to 1 when a variable gets bound
+    int pos16;              // instance A reads the position as int16, B and C as int32
+} CondVM;
+extern const CondVM cond_vm[3];
+// @0x6368e11b (and copies): evaluate the condition bytecode at *pc up to the byte `end`, at tape
+// position pos: select tapes, compare the current character with literals, classes and variables
+// (binding unbound ones). AL = 1 if every test passed (pc left at `end`), 0 at the first failure (pc
+// left at it); the rest of EAX is the pc, as in the original. Opcodes outside 0xea..0xfd, and
+// 0xeb-0xed / 0xf4-0xf8, make the original loop forever; they never occur in the rules.
+uint32_t vm_cond(const CondVM *vm, uint8_t end, int32_t pos);

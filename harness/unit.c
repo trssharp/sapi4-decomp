@@ -829,6 +829,50 @@ static void t_vm(int iter) {
     #undef REGS
 }
 
+static void t_cond(int iter) {
+    static const uint32_t fn[3] = { 0x6368e11b, 0x63692147, 0x6369568e };
+    int k = iter % 3;
+    const CondVM *vm = &cond_vm[k];
+    uint32_t gtape[3], save_t[3];
+    for (int q = 0; q < 3; q++) {
+        gtape[q] = galloc(64);
+        for (int i = 0; i < 64; i++) ((uint8_t *)gp(gtape[q], 64))[i] = (uint8_t)rndi(0, 0xa1);
+        save_t[q] = rd32(C, gaddr(vm->tapes) + 4u * q);
+        wr32(C, gaddr(vm->tapes) + 4u * q, gtape[q]);
+    }
+    uint8_t *vars = gp(gaddr(vm->vars), 16);
+    uint8_t svars[16]; memcpy(svars, vars, 16);
+    for (int i = 0; i < 16; i++) vars[i] = (rnd() % 3) ? 0 : (uint8_t)rndi(1, 0xa1);
+    uint32_t sg[4] = { rd32(C, gaddr(vm->pc)), rd32(C, gaddr(vm->saved)), rd32(C, gaddr(vm->cur)), rd32(C, gaddr(vm->ch)) };
+    wr32(C, gaddr(vm->saved), gtape[rnd() % 3]); wr32(C, gaddr(vm->cur), gtape[rnd() % 3]);
+    *(uint8_t *)gp(gaddr(vm->ch), 1) = (uint8_t)rndi(0, 0xa1);
+    static const uint8_t ops[] = { 0xea, 0xee, 0xef, 0xf0, 0xf1, 0xf2, 0xf3, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd };
+    uint8_t end = 0xe0;
+    uint32_t gc = galloc(64); uint8_t *code = gp(gc, 64);
+    int n = rndi(0, 12);
+    for (int i = 0; i < n; i++) {
+        uint8_t op = ops[rnd() % sizeof ops];
+        code[2 * i] = op;
+        code[2 * i + 1] = (op == 0xee || op == 0xef || op == 0xf0 || op == 0xf1) ? (uint8_t)rndi(0, 2)
+                        : (op == 0xea || op == 0xfd) ? (uint8_t)rndi(0, 15)
+                        : (op >= 0xf9) ? (uint8_t)rndi(0, 6) : (uint8_t)rndi(0, 0xa1);
+    }
+    code[2 * n] = end;
+    wr32(C, gaddr(vm->pc), gc);
+    int32_t pos = rndi(0, 60);
+    reg_add(gaddr(vm->pc), 4); reg_add(gaddr(vm->saved), 4); reg_add(gaddr(vm->cur), 4); reg_add(gaddr(vm->ch), 1);
+    reg_add(gaddr(vm->vars), 16); reg_add(gaddr(vm->bound), 2);
+    uint32_t a[2] = { end, (uint32_t)pos };
+    uint32_t r1 = call(fn[k], 2, a);
+    reg_save();
+    uint32_t r2 = vm_cond(vm, end, pos);
+    check("vm_cond", iter, "EAX", &r1, &r2, 4);
+    reg_check("vm_cond", iter);
+    memcpy(vars, svars, 16);
+    wr32(C, gaddr(vm->pc), sg[0]); wr32(C, gaddr(vm->saved), sg[1]); wr32(C, gaddr(vm->cur), sg[2]); wr32(C, gaddr(vm->ch), sg[3]);
+    for (int q = 0; q < 3; q++) wr32(C, gaddr(vm->tapes) + 4u * q, save_t[q]);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -858,6 +902,7 @@ int main(int argc, char **argv) {
         t_rate(it);
         t_misc(it);
         t_vm(it);
+        t_cond(it);
         if (it < 500) t_viterbi(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
