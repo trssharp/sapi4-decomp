@@ -116,9 +116,14 @@ typedef struct VocEngine {
     uint32_t thread;        // 0x60 the synthesis thread (SetThreadPriority)
     uint8_t _64[0x94 - 0x64];
     uint32_t resample[4];   // 0x94, 0x98, 0x9c, 0xa0 optional sample-rate converters (C++ objects)
-    uint8_t _a4[0x134 - 0xa4];
+    uint8_t _a4[0xbc - 0xa4];
+    int32_t mode;           // 0xbc index into the engine's mode table
+    int32_t style;          // 0xc0 < 0: the character (\Chr\) to re-apply after a reset
+    uint32_t prio[7][3];    // 0xc4 thread priorities per level (low, high, ...)
+    uint32_t level;         // 0x118
+    uint8_t _11c[0x134 - 0x11c];
     uint32_t ev_stop;       // 0x134
-    uint8_t _138[4];
+    uint32_t ev_done;       // 0x138
     GPTR(struct Queue) in;  // 0x13c
     GPTR(struct Queue) out; // 0x140
 } VocEngine;
@@ -136,3 +141,11 @@ int32_t voc_synth_request(VocEngine *v, const struct UnitOut *u, FloatBuf *out, 
 void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n);
 // a sample-rate converter object's convert method (not decompiled; never reached by the corpus)
 int32_t voc_resample(uint32_t obj, uint32_t method, float *in, GPTR(float) *out, int32_t n);
+// @0x636819e6 thiscall (not decompiled yet): (re)initialise the synthesizer for character `style`
+void voc_init(VocEngine *v, int32_t style);
+// @0x6367ddfb stdcall: returns its argument
+uint32_t identity32(uint32_t x);
+// the resamplers' flush methods (not decompiled; unreached)
+void voc_resample_flush(uint32_t obj, uint32_t method);
+// @0x63681ede thiscall: the synthesis thread's loop; @0x636822a1 its thread procedure
+int32_t voc_thread_loop(VocEngine *v);

@@ -111,3 +111,13 @@ int vc_lstrcmpA(const char *a, const char *b) { return vc_word_cmp((const uint8_
 int vc_lstrcmpiA(const char *a, const char *b) { return vc_word_cmp((const uint8_t *)a, (int)strlen(a), (const uint8_t *)b, (int)strlen(b), 1); }
 void vc_CharLowerA_str(char *s) { for (; *s; s++) *s = (char)cp1252_tolower((uint8_t)*s); }
 int vc_MultiByteToWideChar_cp1252(const uint8_t *s, int n, uint16_t *d) { for (int i = 0; i < n; i++) d[i] = cp1252_to_uni[s[i]]; return n; }
+
+int vc_wcsicmp(const uint16_t *a, const uint16_t *b) {
+    for (size_t i = 0;; i++) {
+        int x = a[i], y = b[i];
+        if (x < 128) x = vc_tolower(x);
+        if (y < 128) y = vc_tolower(y);
+        if (x != y) return x < y ? -1 : 1;
+        if (!x) return 0;
+    }
+}

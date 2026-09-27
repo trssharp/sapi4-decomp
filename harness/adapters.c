@@ -327,3 +327,7 @@ void hk_voc_synth_request(Emu *e, X86 *c) {
     E_RET(voc_synth_request(THIS(VocEngine), GPH(UnitOut, A(0), sizeof(UnitOut)), GPH(FloatBuf, A(1), 8), GPH(int32_t, A(2), 4)));
 }
 void hk_voc_send_audio(Emu *e, X86 *c) { voc_send_audio(THIS(VocEngine), A(0) ? GPH(FloatBuf, A(0), 8) : NULL, AI(1)); }
+
+void hk_identity32(Emu *e, X86 *c) { E_RET(identity32(A(0))); }
+void hk_voc_thread_loop(Emu *e, X86 *c) { E_RET(voc_thread_loop(THIS(VocEngine))); }
+void hk_voc_thread_proc(Emu *e, X86 *c) { E_RET(voc_thread_loop(GPH(VocEngine, A(0), sizeof(VocEngine)))); }

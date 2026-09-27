@@ -66,3 +66,13 @@ int32_t voc_resample(uint32_t obj, uint32_t method, float *in, GPTR(float) *out,
     c->s.r[ESP] = sp;
     return r;
 }
+
+void voc_init(VocEngine *v, int32_t style) {
+    uint32_t a[1] = { (uint32_t)style };
+    emu_cpu(decomp_emu)->s.r[ECX] = host_to_guest_ptr(v);
+    guest_call(0x636819e6, 1, a);
+}
+void voc_resample_flush(uint32_t obj, uint32_t method) {
+    emu_cpu(decomp_emu)->s.r[ECX] = obj;
+    guest_call(method, 0, NULL);
+}

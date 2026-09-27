@@ -45,3 +45,4 @@ int vc_lstrcmpA(const char *a, const char *b);
 int vc_lstrcmpiA(const char *a, const char *b);
 void vc_CharLowerA_str(char *s);
 int vc_MultiByteToWideChar_cp1252(const uint8_t *s, int n, uint16_t *d);
+int vc_wcsicmp(const uint16_t *a, const uint16_t *b);   // ASCII-only case folding, sign result

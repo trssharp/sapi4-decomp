@@ -110,14 +110,8 @@ static void h_wcscat(Emu *e, X86 *c) {
     memmove(PTR(A(0) + (uint32_t)(2 * d), (uint32_t)(2 * n + 2)), s, 2 * n + 2); E_RET(A(0));
 }
 static void h_wcsicmp(Emu *e, X86 *c) {
-    size_t n1, n2; const uint16_t *a = emu_wstr(e, A(0), &n1), *b = emu_wstr(e, A(1), &n2);
-    for (size_t i = 0;; i++) {
-        int x = a[i], y = b[i];
-        if (x < 128) x = vc_tolower(x);
-        if (y < 128) y = vc_tolower(y);
-        if (x != y) { E_RET(x < y ? -1 : 1); return; }
-        if (!x) { E_RET(0); return; }
-    }
+    size_t n1, n2;
+    E_RET((uint32_t)vc_wcsicmp(emu_wstr(e, A(0), &n1), emu_wstr(e, A(1), &n2)));
 }
 
 // ------------------------------------------------------------------ math (results in ST0)

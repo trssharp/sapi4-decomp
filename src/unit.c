@@ -401,3 +401,108 @@ void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n) {
     }
     vc_free(it);
 }
+
+LAYOUT(VocEngine, level, 0x118);
+LAYOUT(VocEngine, ev_done, 0x138);
+
+uint32_t identity32(uint32_t x) { return x; }
+
+int32_t voc_thread_loop(VocEngine *v) {
+    QItem it;
+    int32_t n;
+    uint32_t wa[2], wb[2];
+    wa[0] = v->ev_stop;
+    wb[0] = v->ev_stop;
+    wa[1] = GP(Queue, v->in)->ev_nonempty;
+    wb[1] = GP(Queue, v->out)->ev_room;
+    for (;;) {
+        if (vc_WaitForMultipleObjects(2, wa, 0, 0xffffffffu) == 0) break;
+        if (!queue_pop(GP(Queue, v->in), &it)) continue;
+        if (queue_is_full(GP(Queue, v->out))) vc_PostMessageA(v->hwnd, v->msg, 0, 0);
+        switch (it.v[0]) {
+        case 0x14: {
+            UnitOut *s = vc_malloc(0x50);
+            GPSET(it.v[3], s);
+            memset(s, 0, 0x50);
+            strcpy(s->name, "SIL");
+            s->dur = (float)((double)it.v[1] * (double)0.001f);
+        }
+            /* fall through */
+        case 4:
+            if (locked_get_11c(v) != 0) goto drop;
+            if (!it.v[3]) continue;
+            {
+                FloatBuf buf = { 0, 0 };
+                if (voc_synth_request(v, GP(const UnitOut, it.v[3]), &buf, &n) < 0) continue;
+                vc_free(GP(void, it.v[3]));
+                if (vc_WaitForMultipleObjects(2, wb, 0, 0xffffffffu) != 0) voc_send_audio(v, &buf, n);
+                vc_free(GP(void, buf.data));
+            }
+            continue;
+        case 8: {
+            v->chunks = 0;
+            queue_push(GP(Queue, v->out), &it);
+            static const uint32_t order[4] = { 0, 2, 3, 1 };
+            static const uint32_t method[4] = { 0x636781b6, 0x63677eee, 0x6367831a, 0x63678052 };
+            for (int k = 0; k < 4; k++)
+                if (v->resample[order[k]]) {
+                    voc_resample_flush(v->resample[order[k]], method[k]);
+                    break;
+                }
+            continue;
+        }
+        case 9:
+            queue_push(GP(Queue, v->out), &it);
+            vc_PostMessageA(v->hwnd, v->msg, 0, 0);
+            vc_SetThreadPriority(v->thread, (int32_t)v->prio[v->level][1]);
+            continue;
+        case 0xc: {
+            const char *chr = GP(const char, it.v[3]);
+            if (vc_stricmp(chr, "\"Normal\"") == 0) {
+                voc_init(v, 0);
+                if (v->style < 0) voc_init(v, -v->style);
+            } else {
+                char *t = vc_malloc(strlen(chr) + 7);
+                strcpy(t, "\\Chr=");
+                strcat(t, chr);
+                strcat(t, "\\");
+                uint16_t w[100];
+                int wn = (int)strlen(t) + 1;
+                if (wn <= 100) vc_MultiByteToWideChar_cp1252((const uint8_t *)t, wn, w);
+                else memset(w, 0, sizeof w);   // (the original compares stale stack)
+                const uint8_t *modes = GP(const uint8_t, GP(const uint32_t, *DLLVAR(uint32_t, 0x63738bc0))[v->mode]);
+                int32_t cnt;
+                memcpy(&cnt, modes + 0x14, 4);
+                for (int32_t i = 1; i <= cnt; i++) {
+                    uint32_t mi = GP(const uint32_t, *(const uint32_t *)(const void *)(modes + 0x18))[i];
+                    if (vc_wcsicmp(w, GP(const uint16_t, identity32(mi) + 0x90c)) == 0) {
+                        voc_init(v, i);
+                        break;
+                    }
+                }
+                vc_free(t);
+            }
+            queue_push(GP(Queue, v->out), &it);
+            continue;
+        }
+        case 0x19:
+            voc_init(v, 0);
+            if (v->style < 0) voc_init(v, -v->style);
+            continue;
+        default:
+            if (vc_WaitForMultipleObjects(2, wb, 0, 0xffffffffu) != 0) {
+                queue_push(GP(Queue, v->out), &it);
+                continue;
+            }
+            goto drop;
+        }
+    drop:
+        if (it.v[3]) vc_free(GP(void, it.v[3]));
+    }
+    while (queue_pop(GP(Queue, v->in), &it)) {
+        if (it.v[0] == 9 && it.v[1]) vc_com_release(it.v[1]);
+        if (it.v[3]) vc_free(GP(void, it.v[3]));
+    }
+    vc_SetEvent(v->ev_done);
+    return 0;
+}
