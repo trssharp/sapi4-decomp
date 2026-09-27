@@ -4,6 +4,7 @@
 // function listed here must be decompiled before it links.
 #include "hooks.h"
 #include "unitsel.h"
+#include "containers.h"
 #include <string.h>
 
 static uint32_t guest_call(uint32_t pref, int nargs, const uint32_t *args) {
@@ -43,4 +44,10 @@ int32_t unit_lattice(UnitStage *u, GPTR(PhoneIn) *ph, int32_t *n) {
     memcpy(n, decomp_guest_mem + g + 4, 4);
     c->s.r[ESP] = sp;
     return r;
+}
+
+double lattice_cost_other(uint32_t fn, int32_t a, int32_t b) {
+    uint32_t args[2] = { (uint32_t)a, (uint32_t)b };
+    emu_call(decomp_emu, fn, 2, args);
+    return x86_fpu_pop(emu_cpu(decomp_emu));
 }

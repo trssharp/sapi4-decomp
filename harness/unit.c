@@ -338,7 +338,12 @@ static void heap_check(const char *fn, int iter, const HeapSnap *a) {
     check(fn, iter, "heap free lists", a->freel, b.freel, sizeof a->freel);
     check(fn, iter, "heap large list", &a->large, &b.large, 4);
     check(fn, iter, "heap live", &a->live, &b.live, 8);
-    if (a->n == b.n) check(fn, iter, "heap memory", a->mem, b.mem, a->n);
+    if (a->n == b.n) {
+        if (getenv("VDBG") && memcmp(a->mem, b.mem, a->n))
+            for (uint32_t i = 0; i < a->n; i += 4)
+                if (memcmp(a->mem + i, b.mem + i, 4)) { uint32_t x, y; memcpy(&x, a->mem + i, 4); memcpy(&y, b.mem + i, 4); fprintf(stderr, "  heap %08x: orig %08x C %08x\n", EMU_HEAP_BASE + i, x, y); }
+        check(fn, iter, "heap memory", a->mem, b.mem, a->n);
+    }
     free(b.mem);
 }
 
@@ -642,6 +647,58 @@ static void t_rate(int iter) {
     E->gq.n = nq;   // drop the test's messages
 }
 
+// the lattice Viterbi on random candidate sets (built with the original constructors), heap compared
+static void t_viterbi(int iter) {
+    int stages = rndi(1, 8);
+    uint32_t ga = galloc(sizeof(VecArray));
+    memset(gp(ga, sizeof(VecArray)), 0, sizeof(VecArray));
+    C->s.r[ECX] = ga; call(0x636881ed, 0, NULL);
+    uint32_t ia[3] = { (uint32_t)stages, 4, 2 };
+    thiscall(0x6368824c, ga, 3, ia);
+    for (int t = 0; t < stages; t++) {
+        int n = rndi(0, 6);
+        for (int k = 0; k < n; k++) {
+            uint32_t ap[2] = { (uint32_t)t, (uint32_t)((rnd() % 5 == 0) ? 0 : rndi(1, 4)) };
+            thiscall(0x636882d6, ga, 2, ap);
+        }
+    }
+    VecArray *va = gp(ga, sizeof(VecArray));
+    va->beam = (iter & 1) ? 0.0f : (float)rndi(0, 3);
+    if (iter & 2) va->beam = (iter & 4) ? -2.0f : 0.0f;
+    HeapSnap h0; heap_snap(&h0);
+    VecArray save; memcpy(&save, va, sizeof save);
+    // half the cases use a cost function with negative values (a - b), so paths really compete
+    static uint32_t fake = 0;
+    if (!fake) {
+        static const uint8_t code[] = { 0x8B,0x44,0x24,0x04, 0x2B,0x44,0x24,0x08, 0x50, 0xDB,0x04,0x24, 0x58, 0xC3 };
+        fake = emu_static(E, sizeof code);
+        memcpy(gp(fake, sizeof code), code, sizeof code);
+    }
+    uint32_t fn = (iter & 2) ? fake : gaddr(0x63685d00);
+
+    uint32_t r1 = thiscall(0x636882fc, ga, 1, &fn);
+    VecArray after; memcpy(&after, va, sizeof after);
+    HeapSnap h1; heap_snap(&h1);
+    heap_restore(&h0);
+    memcpy(va, &save, sizeof save);
+    uint32_t r2 = (uint32_t)lattice_viterbi(va, fn);
+    check("lattice_viterbi", iter, "EAX", &r1, &r2, 4);
+    check("lattice_viterbi", iter, "object", &after, va, sizeof after);
+    if (getenv("VDBG") && memcmp(&after, va, sizeof after)) {
+        fprintf(stderr, "case %d stages %d beam %g: r %u/%u result %08x/%08x cnt %d\n", iter, stages, va->beam, r1, r2, after.result, va->result, va->count);
+        for (int t = 0; t < stages; t++) { IntVec *iv = gp(rd32(C, va->items + 4u * t), 16); fprintf(stderr, " stage %d:", t); for (int k = 0; k < iv->count; k++) fprintf(stderr, " %d", ((int32_t *)gp(iv->data, 4))[k]); fprintf(stderr, "\n"); }
+    }
+    heap_check("lattice_viterbi", iter, &h1);
+    free(h0.mem); free(h1.mem);
+    // append / lacks on their own
+    int16_t arr[8]; for (int i = 0; i < 8; i++) arr[i] = (int16_t)rndi(0, 5);
+    uint32_t garr = galloc(16); memcpy(gp(garr, 16), arr, 16);
+    int16_t v = (int16_t)rndi(0, 6); int nn = rndi(0, 8);
+    uint32_t al[3] = { (uint32_t)(uint16_t)v, (uint32_t)nn, garr };
+    uint32_t q1 = call(0x63685bf7, 3, al), q2 = (uint32_t)array_lacks(v, nn, arr);
+    check("array_lacks", iter, "EAX", &q1, &q2, 4);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -669,6 +726,7 @@ int main(int argc, char **argv) {
         t_prosody(it);
         t_tapes(it);
         t_rate(it);
+        if (it < 500) t_viterbi(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }

@@ -40,8 +40,9 @@ void intvec_free_data(IntVec *v);
 void intvec_reserve(IntVec *v, int n, int step);
 
 typedef struct VecArray {
-    int32_t _00, _04;
-    GPTR(void) extra;       // 0x08 freed by vecarray_destroy
+    float beam;             // 0x00 prune candidates scoring above this (0: off)
+    uint32_t cost_fn;       // 0x04 code address of the transition cost function (cdecl, ST0)
+    GPTR(int32_t) result;   // 0x08 best path, one candidate per stage (freed by vecarray_destroy)
     int32_t count;          // 0x0c
     GPTR(GPTR(IntVec)) items;  // 0x10
 } VecArray;
@@ -56,3 +57,18 @@ int vecarray_init(VecArray *a, int n, int cap, int step);
 typedef struct Blob { int32_t type; int32_t _04, _08; GPTR(void) data; int32_t bytes; } Blob;
 // @0x63685814 stdcall: copy 0x50 bytes into a new blob of type 4; returns 1
 int blob_copy80(const void *src, Blob *out);
+
+// @0x636881b0 thiscall: append, growing by `step`; returns the old count
+int32_t intvec_append(IntVec *v, int32_t x);
+// @0x636882d6 thiscall: append x to vector i (0..count); 0, or -1 if i is out of range
+int32_t vecarray_append(VecArray *a, int32_t i, int32_t x);
+// @0x63685d00 cdecl: the lattice's transition cost: 0.0 between equal candidates, else 1.0 (ST0)
+double lattice_cost(int32_t a, int32_t b);
+// @0x63685bf7 stdcall: 0 if v occurs in a[0..n-1], else 1
+int array_lacks(int16_t v, int32_t n, const int16_t *a);
+// @0x636882fc thiscall: Viterbi search over the candidate vectors (one per stage) with the cost
+// function (cost_fn replaced when fn is nonzero); the best path into `result`. 0, or -1 when out of
+// memory.
+int32_t lattice_viterbi(VecArray *a, uint32_t fn);
+// a cost function that is not lattice_cost (hook build: runs the original)
+double lattice_cost_other(uint32_t fn, int32_t a, int32_t b);

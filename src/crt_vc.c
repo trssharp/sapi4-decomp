@@ -51,6 +51,7 @@ recurse:;
 void *vc_malloc(size_t n) { return malloc(n); }
 void vc_free(void *p) { free(p); }
 void *vc_realloc(void *p, size_t n) { return realloc(p, n); }
+void *vc_calloc(size_t n, size_t size) { return calloc(n, size); }
 void vc_sleep(uint32_t ms) { (void)ms; }
 void vc_EnterCriticalSection(void *cs) { (void)cs; }
 void vc_LeaveCriticalSection(void *cs) { (void)cs; }

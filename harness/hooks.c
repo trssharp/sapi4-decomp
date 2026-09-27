@@ -18,6 +18,15 @@ void *vc_realloc(void *p, size_t n) {
     uint32_t r = emu_realloc(decomp_emu, p ? (uint32_t)((uint8_t *)p - decomp_guest_mem) : 0, (uint32_t)n);
     return r ? decomp_guest_mem + r : NULL;
 }
+void *vc_calloc(size_t n, size_t size) {
+    // as the emulator's calloc: a 32-bit product over 2 GB fails, otherwise malloc + zero
+    uint64_t t = (uint64_t)(uint32_t)n * (uint32_t)size;
+    if (t > 0x7FFFFFFF) return NULL;
+    uint32_t p = emu_malloc(decomp_emu, (uint32_t)t);
+    if (!p) return NULL;
+    memset(decomp_guest_mem + p, 0, (size_t)t);
+    return decomp_guest_mem + p;
+}
 void vc_free(void *p) {
     if (p) emu_free(decomp_emu, (uint32_t)((uint8_t *)p - decomp_guest_mem));
 }

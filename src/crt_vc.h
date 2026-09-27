@@ -14,6 +14,7 @@ int vc_rand(void);
 void *vc_malloc(size_t n);
 void vc_free(void *p);
 void *vc_realloc(void *p, size_t n);
+void *vc_calloc(size_t n, size_t size);
 // KERNEL32 Sleep: the engine yields its worker threads with Sleep(0). Nothing to do in a single-threaded
 // build; the hook build advances the emulator's virtual clock and yields when the hook returns.
 void vc_sleep(uint32_t ms);

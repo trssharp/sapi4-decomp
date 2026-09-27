@@ -306,3 +306,9 @@ void hk_unit_send(Emu *e, X86 *c) { unit_send(THIS(UnitStage), GPH(UnitOutBuf, A
 void hk_unit_phrase(Emu *e, X86 *c) { E_RET(unit_phrase(THIS(UnitStage), (PhoneIn *)(void *)x86_ptr(c, A(0), 1), AI(1))); }
 void hk_unit_thread_loop(Emu *e, X86 *c) { E_RET(unit_thread_loop(THIS(UnitStage))); }
 void hk_unit_thread_proc(Emu *e, X86 *c) { E_RET(unit_thread_loop(GPH(UnitStage, A(0), sizeof(UnitStage)))); }
+
+void hk_intvec_append(Emu *e, X86 *c) { E_RET(intvec_append(THIS(IntVec), AI(0))); }
+void hk_vecarray_append(Emu *e, X86 *c) { E_RET(vecarray_append(THIS(VecArray), AI(0), AI(1))); }
+void hk_lattice_cost(Emu *e, X86 *c) { x86_fpu_push(c, lattice_cost(AI(0), AI(1))); }
+void hk_array_lacks(Emu *e, X86 *c) { int32_t n = AI(1); E_RET(array_lacks((int16_t)A(0), n, n > 0 ? GPH(int16_t, A(2), 2u * n) : NULL)); }
+void hk_lattice_viterbi(Emu *e, X86 *c) { E_RET(lattice_viterbi(THIS(VecArray), A(0))); }
