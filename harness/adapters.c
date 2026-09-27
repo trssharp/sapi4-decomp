@@ -177,3 +177,7 @@ void hk_voc_excitation(Emu *e, X86 *c) {
                    P0(const int32_t, A(5)), P0(const float, A(6)), P0(float, A(7)), P0(const float, A(8)),
                    P0(const float, A(9)), AI(10), P0(const float, A(11)), AI(12));
 }
+
+void hk_voc_synth_unit(Emu *e, X86 *c) {
+    E_RET(voc_synth_unit(THIS(VocSynthState), GPH(VocRequest, A(0), sizeof(VocRequest))));
+}

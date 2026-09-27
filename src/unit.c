@@ -7,10 +7,13 @@
 #include "fft.h"
 #include "lpc.h"
 #include "x87.h"
+#include "effect.h"
 #include <string.h>
 
 LAYOUT(VocVoice, noise, 0x3c);
 LAYOUT(VocSynthState, flags, 0x24);
+LAYOUT(VocSynthState, last_lpc, 0x38);
+LAYOUT(VocRequest, produced, 0x1c);
 LAYOUT(VocUnit, _1c, 0x1c);
 
 VocUnit *voc_unit_decode(int index, const VocVoice *v, VocSynthState *s) {
@@ -199,4 +202,82 @@ void voc_excitation(const float *periods, int nframes, const float *exc, const f
         t = (float)((double)dstn / ratio + t);
     }
     (void)t;
+}
+
+int voc_synth_unit(VocSynthState *s, VocRequest *req) {
+    const VocVoice *v = GP(const VocVoice, s->voice);
+    float *out = GP(float, s->out);
+    int ok = 1;
+    float *last = NULL;
+    if (req->unit == 0) {
+        int n = x87_ftol((double)req->dur * s->rate);
+        if (n > s->cap) return 0;
+        memset(out, 0, (size_t)(uint32_t)(n * 4));
+        req->produced = n;
+        memset(GP(float, s->mem), 0, (size_t)(uint32_t)(s->order * 4 + 4));
+        if (s->flags & 8) effect_process(GP(Effect, s->effect), out, req->produced);
+        return 1;
+    }
+    VocUnit *u = voc_unit_decode(req->unit, v, s);
+    GPSET(s->unit, u);
+    if (!u) {
+        req->produced = 0;
+        return 0;
+    }
+    vc_sleep(0);
+    const int nframes = u->nframes;
+    float *periods = GP(float, u->periods);
+    (void)dsp_max_abs(periods, nframes);   // (result discarded by the original)
+    double T = (double)u->total, D = req->dur;
+    float dscale = (float)D;
+    float nf = (float)(double)nframes;
+    int cap = x87_ftol(D * nf * 3.0);
+    float *pitch = GP(float, req->pitch);
+    if (!s->fixed_rate) {
+        for (int i = 0; i < req->npoints; i++) pitch[i] = (float)(T * pitch[i]);
+    } else {
+        int m = x87_ftol((double)pitch[0]);
+        for (int i = 1; i < req->npoints; i++) {
+            double md = (double)m;
+            if (!(md >= (double)pitch[i])) m = x87_ftol((double)pitch[i]);
+        }
+        cap = x87_ftol((double)m * D * 3.0);
+        dscale = (float)((double)s->rate * D / T);
+        cap = 2 * x87_ftol((double)cap - (double)dscale * nf * -3.0);
+    }
+    size_t size = (size_t)(uint32_t)(cap * 4);
+    int32_t *frames = vc_malloc(size);
+    float *signs = vc_malloc(size);
+    float *lens = vc_malloc(size);
+    int count = voc_pitch_marks(periods, nframes, lens, dscale, s->rate, GP(const float, req->times), pitch,
+                                req->npoints, s->fixed_rate, req->_00, frames, signs);
+    req->produced = 0;
+    for (int j = 0; j < count; j++) req->produced = x87_ftol((double)req->produced + x87_abs_cmp0(lens[j]));
+    if (req->produced > s->cap) {
+        ok = 0;
+    } else {
+        voc_excitation(periods, nframes, GP(const float, u->exc), lens, count, frames, signs, out,
+                       GP(const float, req->times), GP(const float, req->gains), req->npoints,
+                       GP(const float, v->window), v->fft_n);
+        vc_sleep(0);
+        float *x = out;
+        float *lpc = GP(float, u->lpc);
+        for (int j = 0; j < count; j++) {
+            last = lpc + frames[j] * (s->order + 1);
+            int n = x87_ftol(x87_abs_cmp0(lens[j]));
+            last[0] = 1.0f;
+            dsp_allpole(last, s->order, GP(float, s->mem), x, n);
+            x += n;
+        }
+        if (last) memcpy(GP(float, s->last_lpc), last, (size_t)(uint32_t)(s->order * 4 + 4));
+        vc_sleep(0);
+        if (s->flags & 2) dsp_fir(out, req->produced, GP(const float, s->fcoef), GP(float, s->fmem), s->forder);
+        if (s->flags & 4) dsp_iir_c0(out, req->produced, GP(const float, s->fcoef), GP(float, s->fmem), s->forder);
+        if (s->flags & 8) effect_process(GP(Effect, s->effect), out, req->produced);
+    }
+    vc_free(lens);
+    vc_free(frames);
+    vc_free(signs);
+    voc_unit_free(GP(VocUnit, s->unit));
+    return ok;
 }

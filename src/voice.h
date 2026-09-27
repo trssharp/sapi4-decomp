@@ -24,16 +24,41 @@ typedef struct VocVoice {
     int32_t fft_n;          // 0x2c
     int32_t fft_log2;       // 0x30
     GPTR(const float) sine; // 0x34 sin table for the FFT
-    int32_t _38;
+    GPTR(const float) window;  // 0x38 (fft_n) cross-fade window for dsp_fit_period
     GPTR(const int8_t) noise;  // 0x3c noise table
 } VocVoice;
 
-// the part of the synthesizer object unit decoding uses
+struct Effect;
+// the synthesizer object (C++ in the original)
 typedef struct VocSynthState {
-    uint8_t _00[0x20];
+    GPTR(const VocVoice) voice;  // 0x00
+    float rate;             // 0x04 sample rate
+    int32_t order;          // 0x08 LPC order
+    int32_t fixed_rate;     // 0x0c 1: pitch marks at rate / pitch (see voc_pitch_marks)
+    GPTR(VocUnit) unit;     // 0x10 the unit being synthesized
+    GPTR(float) mem;        // 0x14 synthesis filter state [order + 1]
+    GPTR(float) out;        // 0x18 output buffer
+    int32_t cap;            // 0x1c its size in samples
     int32_t noise_pos;      // 0x20 read position in the voice's noise table
-    uint32_t flags;         // 0x24 bit 0: whisper (every frame unvoiced)
+    uint32_t flags;         // 0x24 bit 0 whisper (every frame unvoiced), 1 FIR, 2 IIR, 3 effect
+    GPTR(float) fmem;       // 0x28 FIR / IIR state
+    GPTR(const float) fcoef;  // 0x2c FIR / IIR coefficients
+    int32_t forder;         // 0x30
+    GPTR(struct Effect) effect;  // 0x34
+    GPTR(float) last_lpc;   // 0x38 the last frame's LPC coefficients [order + 1]
 } VocSynthState;
+
+// one synthesis request (a unit with its prosody)
+typedef struct VocRequest {
+    int32_t _00;            // 0x00 passed on to voc_pitch_marks, which ignores it
+    int32_t unit;           // 0x04 unit index; 0 = silence
+    float dur;              // 0x08 duration scale (silence: seconds)
+    int32_t npoints;        // 0x0c prosody contour points
+    GPTR(float) times;      // 0x10 [npoints] sample positions
+    GPTR(float) pitch;      // 0x14 [npoints] (scaled in place by the unit's length when not fixed_rate)
+    GPTR(const float) gains;  // 0x18 [npoints]
+    int32_t produced;       // 0x1c samples written to out
+} VocRequest;
 
 // one decoded unit (malloc'd, 0x20 bytes)
 typedef struct VocUnit {
@@ -69,3 +94,7 @@ int voc_pitch_marks(const float *periods, int nframes, float *len, float time_sc
 void voc_excitation(const float *periods, int nframes, const float *exc, const float *lens, int count,
                     const int32_t *frames, const float *signs, float *out, const float *times,
                     const float *gains, int npoints, const float *window, int winn);
+// @0x636715e2 thiscall: synthesize one request into synth->out: decode the unit, place pitch marks,
+// assemble the excitation, run the LPC synthesis filter per mark, then the mode's FIR / IIR / effect.
+// Returns 1, or 0 if the unit cannot be decoded or the output does not fit.
+int voc_synth_unit(VocSynthState *s, VocRequest *req);
