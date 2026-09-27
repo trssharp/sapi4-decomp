@@ -17,21 +17,43 @@ DLL keeps running around it) and must leave the output bit-identical:
 
 All three pass with every hook enabled. `SAPI4_HOOKS=none` gives the untouched original.
 
-## Where this stands (2026-09-26, first night)
+## Where this stands (2026-09-26/27, first session)
 
 Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`):
 
 | | functions | bytes |
 |---|---|---|
-| static function list (excl. 73 import stubs; recursive descent + gap seeding, approximate) | 1,000 | ~183,000 of .text 184,302 |
+| static function list (excl. 73 import stubs; recursive descent + gap seeding, approximate) | ~1,000 | ~183,000 of .text 184,302 |
 | reached by the golden corpus + tagged text | 523 | 143,316 |
-| **decompiled and verified** | **20** (18 reached, 2 unit-tested only) | **3,445** |
-| share of the reached set | 3.4% | 2.3% |
-| share of all guest instructions executed | | **80.3%** |
+| **decompiled and verified** | **38** (35 reached, 3 reached only by the unit tests) | **7,908** |
+| share of the reached set | 6.7% | 5.4% |
+| share of all guest instructions executed | | **89.6%** |
 
-The 80% is not a measure of how much is done - it is where the time goes: the inverse FFT alone is
-36% of every instruction the engine executes, the all-pole filter 26%, the LSF-to-LPC conversion 9%.
-The golden run went from 21 s to 7.4 s because those now run as native code.
+The 90% is where the time goes, not how much is done: the inverse FFT alone is 36% of every
+instruction the engine executes, the all-pole filter 26%, LSF-to-LPC 9%. The golden run went from
+21 s to 3.6 s because those now run as native code.
+
+**The synthesizer's signal path is complete**: for every unit the engine synthesizes, everything from
+the voice's Inventory bytes to the float samples handed to the audio layer is decompiled C -
+`voc_synth_unit` and everything below it (unit decoding, LSF->LPC, codebook spectra, inverse FFT,
+pitch marks, excitation assembly, the LPC synthesis filter, the FIR / IIR mode filters and the
+Hall / Stadium / Space / RoboSoft effect chain). What remains of the back-end thread is plumbing: its
+queues, events, the thread loop and the hand-off to IAudioDest (see "What is left").
+
+Verification of all of it, each run with every hook enabled:
+* `make check`: 5/5 tetyys.com references bit-identical.
+* `make golden`: 46/46.
+* `make hookdiff` (tools/hookdiff.sh): all 19 modes x 9 texts (tags, spelling, numbers, abbreviations,
+  a long sentence) x 2 utterances on a warm engine = 171 renders, identical to the original
+  (`SAPI4_HOOKS=none`) - an oracle that needs no recorded hashes.
+* `make unit`: 96,045 checks over 2,000 random cases per function, 0 mismatches. Struct methods run the
+  original and the C on the same guest memory (regions restored in between); allocating functions
+  also compare the whole guest heap (memory, free lists, top) - a leaked buffer is caught (negative
+  control done).
+* The guest heap after a render is identical with and without hooks (`SAPI4_HOOK_STATS=1` prints it),
+  so the decompiled allocations happen in the original's order and sizes.
+* Nested hooks were also verified separately: `SAPI4_HOOKS=-voc_synth_unit,...` lets the original
+  driver call the decompiled pieces individually (golden identical).
 
 ## Engine architecture (as understood so far)
 
@@ -79,30 +101,48 @@ at 0x6371f018). Differences that matter for bit-exactness, found while decompili
 So the SAPI 5 port is an excellent map of *what* each back-end routine does; the exact arithmetic
 still has to come from this binary.
 
-## Done (20 functions)
+## Done (38 functions)
 
-| address | name | what | how verified |
+| address | name | what | verified by |
 |---|---|---|---|
-| 0x636712d5 | dsp_allpole | all-pole synthesis filter (26% of instructions) | golden, check, unit |
-| 0x6367131b | dsp_fit_period | fit an excitation period into another length with a window cross-fade | golden, check, unit |
+| 0x636710da | voc_pitch_marks | pitch-mark placement from the pitch contour (interpolated), unvoiced stretches, reversed repeats | golden, check, hookdiff |
+| 0x636712d5 | dsp_allpole | all-pole LPC synthesis filter (26% of instructions) | golden, check, unit |
+| 0x6367131b | dsp_fit_period | fit an excitation period to a new length with a window cross-fade | golden, check, unit |
 | 0x636713b8 | dsp_period | reverse / copy / fit a period, then gain | golden, check, unit |
-| 0x63671943 | dsp_fir | FIR filter in place | golden, check, unit |
-| 0x636719a0 | dsp_iir_c0 | recursive filter (never reached by the corpus) | unit |
+| 0x63671429 | voc_excitation | assemble the excitation, one period per pitch mark, gain contour | golden, check, hookdiff |
+| 0x636715e2 | voc_synth_unit | synthesize one unit request (the per-unit driver) | golden, check, hookdiff |
+| 0x63671943 | dsp_fir | FIR filter in place (mode filter) | golden, check, unit |
+| 0x636719a0 | dsp_iir_c0 | recursive mode filter (not reached by the corpus) | unit |
+| 0x636719fa | voc_unit_decode | decode a unit: periods, LSF frames -> LPC, gains, excitation via codebook spectra + inverse FFT, or noise | golden, check, hookdiff |
 | 0x63671e49 | dsp_sum_abs | sum of magnitudes (ST0) | golden, check, unit |
 | 0x63671e79 | dsp_scale | gain | golden, check, unit |
 | 0x63671e96 | dsp_reverse | reversed copy | golden, check, unit |
 | 0x63671ebc | dsp_to_pcm16 | float -> 16-bit PCM (fistp, no clipping) | golden, check, unit |
-| 0x63671eee | dsp_to_pcm8 | float -> unsigned 8-bit PCM (never reached) | unit |
+| 0x63671eee | dsp_to_pcm8 | float -> unsigned 8-bit PCM (not reached) | unit |
 | 0x63671f31 | dsp_max_abs | peak magnitude (ST0) | golden, check, unit |
+| 0x63675bc4 | voc_unit_free | free a unit | golden, heap identical |
 | 0x63675c05 | codec_bytes_to_floats | escape-coded byte stream -> floats; returns bytes consumed in EAX | golden, check, unit |
 | 0x63678470 | lpc_from_lsf | LSF -> LPC (sorts the LSFs in place when needed) | golden, check, unit |
 | 0x63684b60 | fft_inverse_real | Sorensen split-radix inverse real FFT (36%) | golden, check, unit |
+| 0x6367fbfe | effect_db_to_gain | dB -> linear (ST0) | golden, unit |
+| 0x6367fc36 | effect_ap_clear | clear a delay line | golden |
+| 0x6367fc54 | effect_ap_init | set up an allpass stage | golden, heap |
+| 0x6367fcb7 | effect_build_stages | allocate the preset's stages | golden, heap |
+| 0x6367fd50 | effect_free | free stages and scratch (not reached) | unit (with heap snapshot) |
+| 0x6367fda2 | effect_preset | mode 1..7 -> preset table in .data | golden, unit |
+| 0x6367fdf5 | effect_init | set up the effect for a mode and rate | golden, unit (with heap snapshot) |
+| 0x6367fee8 | effect_ctor | constructor | golden, unit |
+| 0x6367ff1d | effect_gain_copy | send copy | golden, unit |
+| 0x6367ff87 | effect_mix_clip | dry + wet, clipped to 16 bits | golden, unit |
+| 0x63680036 | effect_allpass | one allpass delay line (optional FIR in the loop) | golden, unit |
+| 0x63680155 | effect_chain | up to five allpasses | golden, unit |
+| 0x63680189 | effect_process | the effect over a buffer, RoboSoft warble from rand() | golden, unit |
 | 0x6368864b | dsp_fold_pulse | fold a pulse into a period (overlap-add of its halves) | golden, check, unit |
 | 0x636886c6 | dsp_scale_b | a second copy of dsp_scale | golden, check, unit |
 | 0x636886e3 | dsp_cmp_float | qsort comparator | unit |
 | 0x63688708 | dsp_sort_floats | VC-qsort of floats, returns "was sorted" | golden, check, unit |
-| 0x6368874c | dsp_place_halves | place a pulse's halves | golden, check, unit |
-| 0x636887a7 | dsp_add_halves | add a pulse's halves | golden, check, unit |
+| 0x6368874c | dsp_place_halves | place a codebook entry's halves into the spectrum | golden, check, unit |
+| 0x636887a7 | dsp_add_halves | add them (delta frames) | golden, check, unit |
 
 `src/crt_vc.c` also carries the VC runtime's qsort algorithm (the order of equal elements shows in
 the output) and `src/x87.h` the x87 conversions (fistp, _ftol, the |x| idiom).
@@ -118,28 +158,48 @@ the output) and `src/x87.h` the x87 conversions (fistp, _ftol, the |x| idiom).
 * **Negative control.** Changing one rounding in dsp_allpole (float instead of double subtraction)
   makes `make check` fail with 99.44% of samples identical and max diff 1 LSB - the harness sees
   single-LSB errors.
+* **The compiler rewrites libm calls.** clang turned `pow(10.0, x)` into `exp10(x)`, 1 ulp off in some
+  cases (the unit test caught it at -8 dB). All code builds with `-fno-builtin`.
+* **Sleep(0) and rand() have state.** `Sleep` advances the emulator's virtual clock and yields; `rand()`
+  is per guest thread. The hook build routes `vc_sleep` / `vc_rand` / `vc_malloc` to the emulator's
+  own implementations (`harness/hooks.c`), the portable build to trivial ones (`src/crt_vc.c`).
+* **Pointers in structs.** `src/gptr.h`: a field is `GPTR(T)` - a 32-bit guest address in the hook
+  build (so layouts are the original's, statically asserted with `LAYOUT`) and a real pointer in the
+  portable build; code converts with `GP()` / `GPSET()`. DLL globals are `DLLVAR(T, addr)`.
+* **Uninitialised stack.** `voc_unit_decode` could read a spectrum left on the stack by an earlier
+  call if a delta-coded frame came before any full frame; the C zero-fills instead and the hook build
+  warns (`decomp WARNING`) if that ever happens. It never has in any render so far.
 * The emulator's x87 is IEEE double with 53-bit precision (the Win32 default control word), and its
   CRT math uses the host libm - so native C with doubles and `-ffp-contract=off` matches it exactly.
   (The emulator itself is bit-exact against the genuine engine on the tetyys references.)
 
 ## What is left, and the obstacles
 
-1. **The rest of the back end** (39 functions, ~7 KB): the per-frame vocoder driver (0x636719fa),
-   pitch-mark / excitation assembly (0x636710da, 0x63671429, 0x636715e2), the effect object
-   (0x63680036..0x63680189 and 0x6367fbfe..0x6367ff87: delay lines, allpasses, RoboSoft warble via
-   rand()), the synthesis thread loop and audio handoff (0x63681ede, 0x63681b7e, 0x63681cb2), and the
-   critical-section queue helpers (0x63684899..0x63684aa1). Most are C++ methods on objects that hold
-   pointers; see "Pointers" below.
-2. **The unit stage** (55 functions, 12.5 KB): tree walking, durations, F0.
-3. **The front end** (308 functions, 94 KB) - the bulk of the work: text normalisation, lexicon,
-   letter-to-sound, CART, prosody. Integer / string code, less x87, but big functions (the largest
-   reached functions are 2-3.4 KB, e.g. 0x63673312 2,736 bytes, 0x63689fee 2,583 bytes).
+1. **The back end's plumbing** (~15 functions, ~3 KB): the synthesis thread (0x636822a1 -> 0x63681ede),
+   its request loop (0x63681cb2: grows buffers, calls voc_synth_unit), the audio hand-off
+   (0x63681b7e: float -> PCM, PostMessage to the audio window, flow control), set-up (0x636819e6, C++
+   with an exception frame), and a thread-safe queue with high/low-water events (0x63684899..
+   0x63684aa1, 0x6368225f). These call EnterCriticalSection / SetEvent / WaitForSingleObject /
+   PostMessageA, which a hook cannot call halfway (a host function cannot block), so they are not
+   hookable one by one; the portable build replaces them with a single-threaded pipeline, as OpenTV
+   replaced its SAPI engine thread. Verification for that layer is end-to-end only (portable build vs
+   golden hashes).
+2. **The unit stage** (thread 0x63687d3f, 55 functions, 12.5 KB): decision-tree walking (TreeImage,
+   PhoneFile), durations and F0. Mostly integer and string code plus some x87; hookable.
+3. **The front end** (thread 0x636844b6, 308 functions, 94 KB) - the bulk of the work: text
+   normalisation, lexicon, letter-to-sound, CART, prosody. Big functions (0x63673312 is 2,736 bytes,
+   0x63689fee 2,583). Needs a C runtime layer that reproduces the emulator's MSVCRT exactly (string
+   compare returning only the sign, the C-locale ctype table, strtok per thread, sprintf/sscanf);
+   the plan is to move those out of emu/crt.c into src/crt_vc.c and have the emulator call them, so
+   there is one definition.
 4. **Voice loading / COM** (ITTSEnum::Select subtree, 126 functions, 20 KB) and the SAPI 4 COM glue,
-   which a portable library would replace rather than reproduce (as OpenTV did).
-5. **477 functions the corpus never reaches** (about 42 KB): mostly dialogs, the lexicon manager,
-   tags and paths the corpus does not exercise. The corpus needs growing (tags, spelling, user
-   lexicon, long sentences, the 8 kHz modes are already in) before those can be verified by
-   anything but the unit tester.
+   which a portable library would replace rather than reproduce.
+5. **477 functions the corpus never reaches** (~42 KB): dialogs, the lexicon manager, tags and paths
+   the corpus does not exercise. The corpus needs growing (tags, spelling, user lexicon) before those
+   can be verified by anything but the unit tester.
+6. **The data.** The portable build needs the DLL's tables (.rdata 515 KB, .data 120 KB: abbreviation
+   table, lexicon, effect presets, ...). OpenTV's answer applies: an extraction tool that regenerates
+   them from the user's own DLL at build time, never committed. `DLLVAR()` marks every use.
 
 **Pointers.** The emulator is 32-bit guest on a 64-bit host, so C structs holding pointers cannot be
 shared between guest and native code the way OpenTV's 32-bit hook build shares them. Leaf functions
@@ -154,10 +214,10 @@ the golden hashes.
 
 ## Estimate
 
-Honest, from tonight's rate: leaf DSP functions took 5-20 minutes each including tests; the FFT (1.4
-KB of dense x87) about 40 minutes with the dataflow tool. The remaining reached code is ~140 KB, a
-large part of it front-end string handling that decompiles faster per byte than x87 but has far more
-control flow. OpenTV took 223 functions / 151 KB for a comparable engine. A realistic figure for this
-one is **4-8 weeks of focused sessions** to a portable build that reproduces the golden corpus, with
-the back end (weeks 1) the quickest part and the front end (weeks 2-6) the bulk; the unreached 42 KB
-is extra and depends on growing the corpus.
+From this session's rate: 38 functions / 7.9 KB, including all the x87-heavy DSP, in one session,
+with the tooling built along the way (the dataflow tool made the FFT and the pitch marks tractable).
+Integer/string front-end code decompiles faster per byte but has far more control flow and needs the
+CRT layer first. The remaining reached code is ~135 KB. OpenTV's comparable engine was 223 functions /
+151 KB. A realistic figure is **5-8 more weeks of focused sessions** to a portable build that
+reproduces the golden corpus: unit stage ~1 week, front end 3-5 weeks, voice loading + data extraction
++ portable driver ~1-2 weeks. The unreached 42 KB is extra and depends on growing the corpus.
