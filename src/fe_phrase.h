@@ -15,6 +15,16 @@ typedef struct EvNode {
     int16_t _16;
     GPTR(struct EvNode) next;   // 0x18
 } EvNode;
+typedef GPTR(EvNode) EvLink;      // a link as stored (in the hook build a 32-bit guest address)
+
+// the word object's pointer fields (event list head 0xb4ac and tail 0xb4b0): 32-bit slots in the hook
+// build; in a portable build the object carries them in an extension past its end
+#ifdef DECOMP_HOOK
+#define WPTR(w, off) (*(GPTR(EvNode) *)(void *)((w) + (off)))
+#else
+#define WOBJ_PTRS 0xc000
+#define WPTR(w, off) (((EvNode **)(void *)((w) + WOBJ_PTRS))[((off) - 0xb4ac) / 4])
+#endif
 
 EvNode *ev_alloc(void);                                 // @0x6368aca2
 void ev_clear(uint8_t *w);                              // @0x6368abe3 stdcall

@@ -691,3 +691,91 @@ int32_t split_sentences(int32_t unused, SplitText *in, int32_t max, Sentence *ou
 }
 #undef br
 #undef q_saved
+
+// ------------------------------------------------------------------ the text input
+
+#include "crt_vc.h"
+#include "fe_text.h"
+
+char *text_sentences(char *text, int32_t spell) {
+    GPTR(char) rewritten = 0;
+    SplitText in;
+    Sentence s;
+    int32_t count = 0, eot = 0;
+    char *src = text;
+    txt_rewrite(text, &rewritten, spell);
+    if (rewritten) {
+        src = GP(char, rewritten);
+        in.total = (int32_t)strlen(src);
+        in.start = 0;
+    }
+    if (!rewritten) {
+        src = text;
+        in.total = (int32_t)strlen(text);
+        in.start = 0;
+    }
+    GPSET(in.base, src);
+    char *buf = vc_malloc((size_t)(uint32_t)((in.total + 1) * 3)), *o = buf;
+    while (in.start < in.total) {
+        split_sentences(0, &in, 1, &s, &count, &eot);
+        memcpy(o, src + s.start, (size_t)(uint32_t)s.raw_len);
+        for (int32_t i = 0; i < s.raw_len; i++, o++)
+            if (*o == '\n' || *o == '\r') *o = ' ';
+        memcpy(o, DLLVAR(const char, 0x6371efe0), 3);     // " \r\n"
+        o += 3;
+        in.start += s.raw_len;
+    }
+    *o = 0;
+    if (rewritten) vc_free(GP(char, rewritten));
+    return buf;
+}
+
+char *text_prepare(char *text, int32_t spell) {
+    char *p = text;
+    if (*text) {
+        do {
+            if (*p == '\n') {
+                *p = '\r';
+                if (p[1] == '\r') *++p = '\n';
+            } else if (*p == '\r') {
+                if (p[1] == '\n') p++;
+            }
+            p++;
+        } while (*p);
+    }
+    char *pending = NULL;               // a line break that becomes a space if text follows it
+    int blank = 0;
+    p = text;
+    if (*text) {
+        do {
+            switch (*p) {
+            case '\t':
+            case ' ': break;
+            case '\n': *p = ' '; break;
+            case '\r':
+                if (blank) {
+                    *p = ' ';
+                    if (pending) pending = NULL;
+                } else {
+                    blank = 1;
+                    pending = p;
+                }
+                break;
+            case 0x1b:
+                // to the next separator (with none the original reads address 1 and faults; this stops)
+                p = strpbrk(p, DLLVAR(const char, 0x6371efd8));   // " \t\r\n\x1a"
+                if (!p) p = text + strlen(text) - 1;
+                break;
+            default:
+                if (pending) {
+                    *pending = ' ';
+                    pending = NULL;
+                }
+                blank = 0;
+                break;
+            }
+            p++;
+        } while (*p);
+    }
+    return text_sentences(text, spell);
+}

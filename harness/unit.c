@@ -22,6 +22,9 @@
 #include "fe_text.h"
 #include "fe_lexer.h"
 #include "fe_split.h"
+#include "fe_input.h"
+#include "fe_reader.h"
+#include "crt_vc.h"
 #include "../port/lexdump.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -1929,6 +1932,252 @@ out:
     emu_free(E, gt); emu_free(E, gin); emu_free(E, gout); emu_free(E, gc); emu_free(E, ge);
 }
 
+// the text input: line breaks, escapes and sentences, into the buffer the front end reads
+static void t_textprep(int iter) {
+    static const char *pieces[] = { "Hello", "world.", "Dr.", "Smith", "said", "\"hi.\"", "(yes)", "No.", "5", "one",
+        "\r\n", "\n", "\r", "\n\r", "\r\n\r\n", "\n\n", "\t", "  ", "\x1b\\Pit=100\\ ", "\x1b\\Spd=200\\\t", "?", "!",
+        "e-mail", "caf\xe9", "a@b.com", ":-)", "1234", "~", "+" };
+    char text[300];
+    int n = 0, lim = rndi(1, 200);
+    while (n < lim) {
+        const char *pc = pieces[rnd() % (sizeof pieces / sizeof pieces[0])];
+        size_t l = strlen(pc);
+        memcpy(text + n, pc, l); n += (int)l;
+        if (rnd() % 3) text[n++] = ' ';
+    }
+    // (an escape with no separator after it makes the original read address 1: not tested)
+    text[n] = 0;
+    int f = rnd() & 1;
+    uint32_t pref = f ? 0x6367f53b : 0x6367f5ef;
+    uint32_t gt = galloc(320);
+    memcpy(gp(gt, 320), text, (size_t)n + 1);
+    uint32_t a[2] = { gt, rnd() % 3 == 0 };
+    uint32_t r1;
+    if (!call_bounded(pref, 2, a, &r1)) goto out;
+    if (!r1) { fprintf(stderr, "text input: no buffer\n"); goto out; }
+    char in1[320], out1[1024];
+    memcpy(in1, gp(gt, 320), (size_t)n + 1);
+    snprintf(out1, sizeof out1, "%s", (char *)gp(r1, 1));
+    emu_free(E, r1);
+    memcpy(gp(gt, 320), text, (size_t)n + 1);
+    char *r2 = f ? text_prepare(gp(gt, 320), (int32_t)a[1]) : text_sentences(gp(gt, 320), (int32_t)a[1]);
+    check(f ? "text_prepare" : "text_sentences", iter, "text", in1, gp(gt, 320), (size_t)n + 1);
+    check(f ? "text_prepare" : "text_sentences", iter, "sentences", out1, r2, strlen(out1) + 1);
+    if (getenv("VDBG") && strcmp(out1, r2)) fprintf(stderr, "  orig [%s]\n  C    [%s]\n", out1, r2);
+    vc_free(r2);
+out:
+    emu_free(E, gt);
+}
+
+// SAPI tags into escapes: a front end object with a small entry table (so that it grows), texts with
+// every tag keyword, well and badly formed
+static void fe_setup(uint32_t gfe, int cap, int addr) {
+    FrontEnd *fe = gp(gfe, sizeof(FrontEnd));
+    memset(fe, 0, sizeof *fe);
+    fe->cap = cap;
+    fe->last = -1;
+    fe->addr_mode = addr;
+    fe->entries = galloc(12u * (uint32_t)cap);
+    memset(gp(fe->entries, 12u * (uint32_t)cap), 0, 12u * (uint32_t)cap);
+}
+static void fe_collect(uint32_t gfe, char *dump, size_t n) {
+    FrontEnd *fe = gp(gfe, sizeof(FrontEnd));
+    FeEntry *en = gp(fe->entries, 12u * (uint32_t)fe->cap);
+    int k = snprintf(dump, n, "cap %d last %d addr %d end %d|", fe->cap, fe->last, fe->addr_mode, en[fe->cap - 1].pos);
+    for (int i = 0; i <= fe->last && k < (int)n - 40; i++) {
+        k += snprintf(dump + k, n - (size_t)k, "%d:%s|", en[i].type, en[i].text ? (char *)gp(en[i].text, 1) : "(null)");
+        if (en[i].text) emu_free(E, en[i].text);
+    }
+    emu_free(E, fe->entries);
+}
+static void t_tagesc(int iter) {
+    static const char *pieces[] = { "Hello", "world.", "one two", "\\Mrk=5\\", "\\mrk=12\\", "\\Mrk\\", "\\Mrk=0x10\\",
+        "\\Pit=100\\", "\\Pau=500\\", "\\Spd=200\\", "\\Vol=30000\\", "\\Mrk=\\", "\\Pit=\\", "\\Pit=abc\\",
+        "\\Pos=\"N\"\\", "\\Prt=\"V\"\\", "\\Prt=\"Adj\"\\", "\\Prt=\"adv\"\\", "\\Prt=\"PP\"\\", "\\Prt=\"X\"\\", "\\Prt=N\\",
+        "\\Ctx=\"Address\"\\", "\\Ctx=\"Normal\"\\", "\\ctx=\"E-Mail\"\\", "\\Ctx=\"Bogus\"\\", "\\Rst\\", "\\Emp\\",
+        "\\Chr=\"Whisper\"\\", "\\Chr=\"Angry\",\"Loud\"\\", "\\Chr=Whisper\\", "\\\\", "\\Com=hi\\", "\\Eng;x\\",
+        "\\Btp=3\\", "\\Tp=4\\", "\\Prn=h eh l ow\\", "\\Wrd=1\\", "\\Xyz\\", "\\", "\r\n", "\n", "\t", "  ", "\x1b" };
+    char text[400] = "a ";  // (a word first: an unknown part of speech appends the escape formatted
+    int n = 2, lim = rndi(3, 250);   // last, and before any the original's buffer is uninitialised)
+    while (n < lim) {
+        const char *pc = pieces[rnd() % (sizeof pieces / sizeof pieces[0])];
+        size_t l = strlen(pc);
+        memcpy(text + n, pc, l); n += (int)l;
+        if (rnd() % 3) text[n++] = ' ';
+    }
+    text[n] = 0;
+    int cap = rndi(2, 9), addr = (rnd() & 1) ? 2 : 0;
+    int32_t tags = rnd() % 4 != 0, mode = rndi(0, 4);
+    uint32_t gt = galloc(420), gfe = galloc(sizeof(FrontEnd)), gout = galloc(4);
+    static char d1[8192], d2[8192], o1[4096], t1[420];
+    memcpy(gp(gt, 420), text, (size_t)n + 1);
+    fe_setup(gfe, cap, addr);
+    uint32_t a[4] = { (uint32_t)tags, (uint32_t)mode, gt, gout };
+    C->s.r[ECX] = gfe;
+    uint32_t r1 = call(0x6368043f, 4, a);
+    snprintf(o1, sizeof o1, "%s", (char *)gp(rd32(C, gout), 1));
+    emu_free(E, rd32(C, gout));
+    memcpy(t1, gp(gt, 420), (size_t)n + 1);
+    fe_collect(gfe, d1, sizeof d1);
+    memcpy(gp(gt, 420), text, (size_t)n + 1);
+    fe_setup(gfe, cap, addr);
+    uint32_t r2 = (uint32_t)fe_tags_to_escapes(gp(gfe, sizeof(FrontEnd)), tags, mode, gp(gt, 420), gp(gout, 4));
+    check("fe_tags_to_escapes", iter, "EAX", &r1, &r2, 4);
+    check("fe_tags_to_escapes", iter, "text", t1, gp(gt, 420), (size_t)n + 1);
+    check("fe_tags_to_escapes", iter, "escapes", o1, gp(rd32(C, gout), 1), strlen(o1) + 1);
+    if (getenv("VDBG") && strcmp(o1, gp(rd32(C, gout), 1))) fprintf(stderr, "  in   [%s]\n  orig [%s]\n  C    [%s]\n", text, o1, (char *)gp(rd32(C, gout), 1));
+    emu_free(E, rd32(C, gout));
+    fe_collect(gfe, d2, sizeof d2);
+    check("fe_tags_to_escapes", iter, "entries", d1, d2, strlen(d1) + 1);
+    if (getenv("VDBG") && strcmp(d1, d2)) fprintf(stderr, "  in [%s]\n  orig %s\n  C    %s\n", text, d1, d2);
+    emu_free(E, gt); emu_free(E, gfe); emu_free(E, gout);
+}
+
+// the word module's reader over texts of words, punctuation and escape sequences, with a small user
+// lexicon; the word object, the events it collects and .data are compared (not the list's node
+// addresses, the event node free list, or the setjmp buffer at 0x63738bf8, which the decompiled code
+// keeps on the host)
+static uint32_t lex_table(const char *const *words, const char *const *prons, int n) {
+    uint32_t t = galloc(8), arr = galloc(4u * (uint32_t)(n ? n : 1));
+    wr32(C, t, (uint32_t)n);
+    wr32(C, t + 4, arr);
+    for (int i = 0; i < n; i++) {
+        uint32_t e = galloc(8), w = galloc((uint32_t)strlen(words[i]) + 1), p = galloc((uint32_t)strlen(prons[i]) + 1);
+        strcpy(gp(w, 1), words[i]);
+        strcpy(gp(p, 1), prons[i]);
+        wr32(C, e, w);
+        wr32(C, e + 4, p);
+        wr32(C, arr + 4u * (uint32_t)i, e);
+    }
+    return t;
+}
+static int reader_runs, reader_events, reader_lex, reader_rc[16];
+static size_t reader_collect(uint32_t go, uint8_t *out, size_t cap) {
+    uint8_t *w = gp(go, 0xb600);
+    memcpy(out, w, 0xb600);
+    memset(out + 0xb4ac, 0, 8);
+    size_t n = 0xb600;
+    uint32_t p = rd32(C, go + 0xb4ac);
+    for (int k = 0; p && k < 4000 && n + 0x18 <= cap; k++) {
+        memcpy(out + n, gp(p, 0x1c), 0x18);
+        n += 0x18;
+        p = rd32(C, p + 0x18);
+    }
+    return n;
+}
+// event nodes carry stale fields the reader does not set: give the free list enough nodes and fill
+// them with one pattern before each run
+static void reader_nodes(void) {
+    uint32_t n = 0;
+    for (uint32_t p = rd32(C, gaddr(0x63738c9c)); p; p = rd32(C, p + 0x18)) n++;
+    for (; n < 600; n++) {
+        EvNode *e = ev_alloc();
+        freelist_push((FreeNode *)(void *)e);
+    }
+    for (uint32_t p = rd32(C, gaddr(0x63738c9c)); p; p = rd32(C, p + 0x18)) memset(gp(p, 0x18), 0xa5, 0x18);
+}
+// the free list as it was (the first run relinks the nodes it takes)
+static uint32_t fl_nodes[4096];
+static int fl_n;
+static void freelist_save(void) {
+    fl_n = 0;
+    for (uint32_t p = rd32(C, gaddr(0x63738c9c)); p && fl_n < 4096; p = rd32(C, p + 0x18)) fl_nodes[fl_n++] = p;
+}
+static void freelist_restore(void) {
+    for (int i = 0; i < fl_n; i++) {
+        memset(gp(fl_nodes[i], 0x18), 0xa5, 0x18);
+        wr32(C, fl_nodes[i] + 0x18, i + 1 < fl_n ? fl_nodes[i + 1] : 0);
+    }
+}
+static void t_reader(int iter) {
+    static uint32_t lex1, lex2;
+    if (!lex1) {
+        static const char *const w1[] = { "Cat", "dog", "o'neil", "xyz" }, *const p1[] = { "K AE1 T", "D AO1 G", "OW0 N IY1 L", "EH1 K S W AY2 Z IY0" };
+        static const char *const w2[] = { "bad", "e.g." }, *const p2[] = { "B AE1 D QQ", "F AO1 R IH0 G Z AE1 M P AH0 L" };
+        lex1 = lex_table(w1, p1, 4);
+        lex2 = lex_table(w2, p2, 2);
+    }
+    static const char *pieces[] = { "hello", "World", "Dr.", "cat", "DOG", "xyz.", "o'neil", "bad", "e.g.", "a", "I",
+        "3", "42", "3.14", ",", ".", "?", "!", ";", ":", "\"", "(", ")", "---", "....", "aaaaaaaaaaaa", "!!!!!!",
+        "Hi.", "Yes!\"", "\r\n", "\n", "\r", "  ", "\t", "\x1bN5 ", "\x1bN[3,4,5] ", "\x1bZ1 2 3 ", "\x1bH7 ",
+        "\x1bI3 ", "\x1bI0 ", "\x1bS4 ", "\x1bR5 ", "\x1bRst ", "\x1bRs ", "\x1bV3 ", "\x1bW7 ", "\x1bWa ",
+        "\x1bWC ", "\x1bM0 ", "\x1bM1 ", "\x1bM2 ", "\x1bM3 ", "\x1b" "AF ", "\x1b" "AP ", "\x1b/ ", "\x1b[addr] ",
+        "\x1b[\\addr] ", "\x1b\" ", "\x1b@N ", "\x1b#", "\x1bP5 ", "\x1b" "C ", "\x1b" "F ", "\x1b" "E ",
+        "\x1bQ ", "\x1bX ", "\x1b" "B" };   // (not a bare "\x1bH": its value is uninitialised in the original)
+    char text[1500];
+    int n = 0, lim = rndi(1, rnd() % 4 ? 200 : 700), kind = rndi(0, 7);
+    if (kind == 0) lim = 0;             // only spaces
+    while (n < 20 && kind == 0) text[n++] = ' ';
+    if (kind == 1) lim = 900;           // one long phrase
+    if (kind == 2) { memcpy(text, "\x1b/ ", 3); n = 3; lim = 1300; }  // long, inside /.../
+    while (n < lim) {
+        const char *pc = kind == 1 || kind == 2 ? ((rnd() % 20) ? "word" : ",") : pieces[rnd() % (sizeof pieces / sizeof pieces[0])];
+        size_t l = strlen(pc);
+        memcpy(text + n, pc, l); n += (int)l;
+        if (rnd() % 3) text[n++] = ' ';
+    }
+    if (rnd() % 4) text[n++] = 0x1a;
+    text[n] = 0;
+    uint32_t go = galloc(0xb600), gt = galloc(1600), gl = galloc(4);
+    uint8_t *w = gp(go, 0xb600);
+    memset(w, 0, 0xb600);
+    uint16_t magic = 0x9b39; memcpy(w + 0xb4ba, &magic, 2);
+    w[0xb4b8] = (uint8_t)rnd();
+    int32_t mode = rndi(0, 3), voice = rndi(1, 9), f1 = rnd() % 3 == 0, f2 = rnd() % 4 == 0;
+    memcpy(w + 0xb4d4, &mode, 4); memcpy(w + 0xb4c8, &voice, 4);
+    memcpy(w + 0xb58c, &f1, 4); memcpy(w + 0xb590, &f2, 4);
+    int16_t l1 = (int16_t)((rnd() & 1) ? rndi(-5, 80) : 0), l2 = (int16_t)((rnd() & 1) ? rndi(-5, 80) : 0);
+    memcpy(w + 0xb57a, &l1, 2); memcpy(w + 0xb57c, &l2, 2);
+    memcpy(gp(gt, 1600), text, (size_t)n + 1);
+    int32_t len = (rnd() % 5) ? n : rndi(0, n);
+    uint32_t flag = rnd() % 5 == 0;
+    uint32_t save74 = rd32(C, gaddr(0x63738b74)), save68 = rd32(C, gaddr(0x63738b68));
+    wr32(C, gaddr(0x63738b74), lex1);
+    wr32(C, gaddr(0x63738b68), lex2);
+    const uint32_t dbase = 0x6371c000, dsize = 0x1e0b0;
+    uint8_t *d0 = malloc(dsize), *w0 = malloc(0xb600), *d1 = malloc(dsize), *o1 = malloc(0xb600 + 0x18 * 4000),
+            *o2 = malloc(0xb600 + 0x18 * 4000);
+    reader_nodes();
+    freelist_save();
+    memcpy(d0, gp(gaddr(dbase), dsize), dsize);
+    memcpy(w0, w, 0xb600);
+    wr32(C, gl, (uint32_t)len);
+    uint32_t a[4] = { go, gt, gl, flag }, r1;
+    if (!call_bounded(0x63689357, 4, a, &r1)) goto out;
+    reader_runs++;
+    uint32_t len1 = rd32(C, gl);
+    size_t n1 = reader_collect(go, o1, 0xb600 + 0x18 * 4000);
+    reader_events += (int)((n1 - 0xb600) / 0x18);
+    memcpy(d1, gp(gaddr(dbase), dsize), dsize);
+    memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+    freelist_restore();
+    memcpy(w, w0, 0xb600);
+    wr32(C, gl, (uint32_t)len);
+    uint32_t r2 = (uint32_t)word_run(w, gp(gt, 1600), gp(gl, 4), (int32_t)flag);
+    size_t n2 = reader_collect(go, o2, 0xb600 + 0x18 * 4000);
+    check("word_run", iter, "EAX", &r1, &r2, 4);
+    if (memchr(o2 + 0x585, 0x10, 0x500)) reader_lex++;
+    reader_rc[((int32_t)r1 + 4) & 15]++;
+    check("word_run", iter, "length read", &len1, gp(gl, 4), 4);
+    check("word_run", iter, "event count", &n1, &n2, sizeof n1);
+    if (n1 == n2) check("word_run", iter, "word object and events", o1, o2, n1);
+    uint8_t *d2 = gp(gaddr(dbase), dsize);
+    for (uint32_t k = 0x63738bf8; k < 0x63738c38; k++) d1[k - dbase] = d2[k - dbase];     // setjmp buffer
+    for (uint32_t k = 0x63738c9c; k < 0x63738ca4; k++) d1[k - dbase] = d2[k - dbase];     // node free list
+    check("word_run", iter, ".data", d1, d2, dsize);
+    if (getenv("VDBG")) {
+        if (n1 == n2 && memcmp(o1, o2, n1)) for (size_t k = 0; k < n1; k++) if (o1[k] != o2[k]) { fprintf(stderr, "  obj +%zx: orig %02x C %02x\n", k, o1[k], o2[k]); break; }
+        if (n1 == n2 && memcmp(o1, o2, n1)) for (size_t k = 0xb600; k < n1; k += 0x18) { fprintf(stderr, "  ev"); for (int q = 0; q < 0x18; q++) fprintf(stderr, " %02x/%02x", o1[k + q], o2[k + q]); fprintf(stderr, "\n"); }
+        for (uint32_t k = 0; k < dsize; k++) if (d1[k] != d2[k]) fprintf(stderr, "  .data %08x: orig %02x C %02x\n", dbase + k, d1[k], d2[k]);
+        if (r1 != r2 || n1 != n2) fprintf(stderr, "  r %d/%d events %zu/%zu text [%s]\n", (int)r1, (int)r2, n1, n2, text);
+    }
+out:
+    wr32(C, gaddr(0x63738b74), save74);
+    wr32(C, gaddr(0x63738b68), save68);
+    free(d0); free(w0); free(d1); free(o1); free(o2);
+    emu_free(E, go); emu_free(E, gt); emu_free(E, gl);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -1996,12 +2245,15 @@ int main(int argc, char **argv) {
         t_lexer(it);
         t_lexwords(it);
         t_split(it);
+        t_textprep(it);
+        t_tagesc(it);
+        t_reader(it);
         if (it < 600) t_main(it);
         if (it < 900) t_proc(it);
         if (it < 500) t_viterbi(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
-    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d, texts split %d (%d into several sentences, %d skipped))\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed, split_runs, split_multi, split_skipped);
+    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d, texts split %d (%d into several sentences, %d skipped), reader runs %d with %d events, %d with user lexicon words; results -3..7: %d %d %d %d %d %d %d %d %d %d %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed, split_runs, split_multi, split_skipped, reader_runs, reader_events, reader_lex, reader_rc[1], reader_rc[2], reader_rc[3], reader_rc[4], reader_rc[5], reader_rc[6], reader_rc[7], reader_rc[8], reader_rc[9], reader_rc[10], reader_rc[11]);
     return fails ? 1 : 0;
 }

@@ -22,14 +22,6 @@
 #define G_92E4 0x637392e4
 #define G_9270 0x63739270
 
-// the word object's pointer fields (event list head and tail): 32-bit slots in the hook build; in a
-// portable build the object carries them in an extension past its end
-#ifdef DECOMP_HOOK
-#define WPTR(w, off) (*(GPTR(EvNode) *)(void *)((w) + (off)))
-#else
-#define WOBJ_PTRS 0xc000
-#define WPTR(w, off) (((EvNode **)(void *)((w) + WOBJ_PTRS))[((off) - 0xb4ac) / 4])
-#endif
 
 // ---- the phrase event list
 
@@ -93,7 +85,6 @@ static int32_t pos_of(GPTR(EvNode) n) {
 }
 
 // (list links are kept as the stored values: a null link is 0 in both builds)
-typedef GPTR(EvNode) EvLink;
 int32_t ev_place(uint8_t *w) {
     int32_t hi = W16(w, 2), s = W16(w, 0);
     EvLink ed = WPTR(w, 0xb4ac);

@@ -8,12 +8,6 @@
 
 #define DIV10(v) ((int32_t)(v) / 10)
 
-// the word objects' pointer fields (see fe_phrase.c)
-#ifdef DECOMP_HOOK
-#define WPTR(w, off) (*(GPTR(EvNode) *)(void *)((w) + (off)))
-#else
-#define WPTR(w, off) (((EvNode **)(void *)((w) + 0xc000))[((off) - 0xb4ac) / 4])
-#endif
 
 static void set_tapes(uint8_t *w, uint32_t sel, uint32_t tape5, uint32_t wglob) {
     static const uint32_t off[5] = { 0x585, 0xb05, 0x1085, 0x1605, 0x438e };

@@ -73,3 +73,9 @@ int word_equals(const char *ref, const char *s, int32_t n);         // @0x6369c2
 // 0, or 5 when out is full before the text ends
 int32_t split_sentences(int32_t unused, SplitText *in, int32_t max, Sentence *out, int32_t *count,
                         int32_t *eot);
+// @0x6367f5ef stdcall: the text after txt_rewrite, cut into sentences, each followed by " \r\n" and with
+// its own line breaks turned into spaces; a new buffer (malloc)
+char *text_sentences(char *text, int32_t spell);
+// @0x6367f53b stdcall: line breaks made CR / CR LF, a lone line break inside text made a space (a blank
+// line stays a break), escape sequences passed over; then text_sentences
+char *text_prepare(char *text, int32_t spell);

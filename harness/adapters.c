@@ -8,6 +8,8 @@
 #include "fe_text.h"
 #include "fe_lexer.h"
 #include "fe_split.h"
+#include "fe_input.h"
+#include "fe_reader.h"
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -590,3 +592,57 @@ void hk_split_sentences(Emu *e, X86 *c) {
                                     GPH(Sentence, A(3), sizeof(Sentence) * (uint32_t)(max > 0 ? max : 1)),
                                     GPH(int32_t, A(4), 4), GPH(int32_t, A(5), 4)));
 }
+void hk_text_sentences(Emu *e, X86 *c) { E_RET(host_to_guest(text_sentences(GSTR(A(0)), AI(1)))); }
+void hk_text_prepare(Emu *e, X86 *c) { E_RET(host_to_guest(text_prepare(GSTR(A(0)), AI(1)))); }
+
+// ------------------------------------------------------------------ text input (fe_input.c)
+void hk_fe_entries_clear(Emu *e, X86 *c) { fe_entries_clear(THIS(FrontEnd)); E_RET(0); }
+void hk_fe_entry_add_num(Emu *e, X86 *c) { E_RET((uint32_t)fe_entry_add_num(THIS(FrontEnd), AI(0), A(1))); }
+void hk_fe_entry_add_str(Emu *e, X86 *c) { E_RET((uint32_t)fe_entry_add_str(THIS(FrontEnd), AI(0), GSTR(A(1)))); }
+void hk_tag_mode_name(Emu *e, X86 *c) { E_RET(tag_mode_name(AI(0))); }
+void hk_tag_mode_value(Emu *e, X86 *c) { E_RET((uint32_t)tag_mode_value(GSTR(A(0)))); }
+void hk_tag_skip(Emu *e, X86 *c) { tag_skip(GPH(uint32_t, A(0), 4)); E_RET(A(0)); }
+void hk_str_append(Emu *e, X86 *c) {
+    uint32_t *pp = GPH(uint32_t, A(0), 4);
+    char *cur = GP(char, *pp);
+    str_append(&cur, GSTR(A(1)));
+    *pp = host_to_guest(cur);
+    E_RET(1);
+}
+void hk_fe_tags_to_escapes(Emu *e, X86 *c) {
+    E_RET((uint32_t)fe_tags_to_escapes(THIS(FrontEnd), AI(0), AI(1), GSTR(A(2)), GPH(uint32_t, A(3), 4)));
+}
+void hk_fe_set_text(Emu *e, X86 *c) { E_RET((uint32_t)fe_set_text(THIS(FrontEnd), GSTR(A(0)))); }
+void hk_fe_text_input(Emu *e, X86 *c) {
+    E_RET((uint32_t)fe_text_input(THIS(FrontEnd), GPH(uint16_t, A(0), 2), GPH(int32_t, A(1), 4), AI(2), AI(3)));
+}
+void hk_phonemes_to_names(Emu *e, X86 *c) { E_RET((uint32_t)phonemes_to_names(GPH(uint16_t, A(0), 2), GPH(uint32_t, A(1), 4), AI(2))); }
+void hk_phoneme_index(Emu *e, X86 *c) { E_RET((uint32_t)phoneme_index((uint16_t)A(0))); }
+void hk_free_if2(Emu *e, X86 *c) { E_RET((uint32_t)free_if2(A(0) ? (void *)x86_ptr(c, A(0), 1) : NULL)); }
+
+// ------------------------------------------------------------------ the word module's reader (fe_reader.c)
+#define WOBJ(a) GPH(uint8_t, (a), 0xb600)
+void hk_ev_add_text(Emu *e, X86 *c) { E_RET((uint32_t)ev_add_text(WOBJ(A(0)), AI(1), AI(2))); }
+void hk_ev_add_word(Emu *e, X86 *c) { E_RET((uint32_t)ev_add_word(WOBJ(A(0)), AI(1), AI(2))); }
+void hk_ev_add_index(Emu *e, X86 *c) { E_RET((uint32_t)ev_add_index(WOBJ(A(0)), AI(1), AI(2), AI(3))); }
+void hk_ev_add_z(Emu *e, X86 *c) { E_RET((uint32_t)ev_add_z(WOBJ(A(0)), AI(1), AI(2), AI(3))); }
+void hk_ev_add_value(Emu *e, X86 *c) { E_RET((uint32_t)ev_add_value(WOBJ(A(0)), AI(1), (uint16_t)A(2))); }
+void hk_ev_add_mark(Emu *e, X86 *c) { E_RET((uint32_t)ev_add_mark(WOBJ(A(0)), AI(1), AI(2))); }
+void hk_word_reset(Emu *e, X86 *c) { E_RET((uint32_t)word_reset(A(0) ? WOBJ(A(0)) : NULL)); }
+void hk_word_voice(Emu *e, X86 *c) { E_RET((uint32_t)word_voice(WOBJ(A(0)), AI(1))); }
+void hk_rd_back(Emu *e, X86 *c) { E_RET(rd_back()); }
+void hk_rd_init(Emu *e, X86 *c) { rd_init(GSTR(A(0)), AI(1)); }
+void hk_rd_phrase(Emu *e, X86 *c) { E_RET((uint32_t)rd_phrase((uint8_t)A(0))); }
+void hk_rd_close_word(Emu *e, X86 *c) { E_RET((uint32_t)rd_close_word(AI(0), GPH(int32_t, A(1), 4))); }
+void hk_word_run(Emu *e, X86 *c) {
+    E_RET((uint32_t)word_run(A(0) ? WOBJ(A(0)) : NULL, GSTR(A(1)), GPH(int32_t, A(2), 4), AI(3)));
+}
+void hk_word_dispatch(Emu *e, X86 *c) { E_RET((uint32_t)word_dispatch(AI(0), GSTR(A(1)), GPH(int32_t, A(2), 4), AI(3))); }
+void hk_words_feed(Emu *e, X86 *c) {
+    E_RET((uint32_t)words_feed(AI(0), GSTR(A(1)), GPH(int32_t, A(2), 4), GPH(int32_t, A(3), 4)));
+}
+void hk_phone_code(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | phone_code(GSTR(A(0)))); }
+void hk_phones_to_codes(Emu *e, X86 *c) { E_RET(host_to_guest(phones_to_codes(GSTR(A(0))))); }
+void hk_lex_entry_cmp(Emu *e, X86 *c) { E_RET((uint32_t)lex_entry_cmp(GPH(uint32_t, A(0), 4), GPH(uint32_t, A(1), 4))); }
+void hk_user_lex_find(Emu *e, X86 *c) { E_RET(user_lex_find(GSTR(A(0)), GPH(UserLex, A(1), sizeof(UserLex)))); }
+void hk_user_lex_word(Emu *e, X86 *c) { E_RET((uint32_t)user_lex_word(GSTR(A(0)), GPH(uint32_t, A(1), 4))); }

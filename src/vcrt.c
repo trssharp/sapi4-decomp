@@ -142,3 +142,25 @@ int vc_wcsicmp(const uint16_t *a, const uint16_t *b) {
 int vc_IsCharAlphaNumericA(uint8_t ch) {
     return cp1252_isalpha(ch) || (ch >= '0' && ch <= '9') || ch == 0xB2 || ch == 0xB3 || ch == 0xB9;
 }
+
+const void *vc_bsearch(const void *key, const void *base, uint32_t num, uint32_t width,
+                       int (*cmp)(const void *, const void *)) {
+    if (!num) return NULL;
+    const char *lo = base, *hi = (const char *)base + (size_t)(num - 1) * width;
+    while (lo <= hi) {
+        uint32_t half = num / 2;
+        if (half) {
+            const char *mid = lo + (size_t)(num & 1 ? half : half - 1) * width;
+            int r = cmp(key, mid);
+            if (!r) return mid;
+            if (r < 0) {
+                hi = mid - width;
+                num = num & 1 ? half : half - 1;
+            } else {
+                lo = mid + width;
+                num = half;
+            }
+        } else return cmp(key, lo) ? NULL : lo;
+    }
+    return NULL;
+}

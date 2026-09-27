@@ -7,6 +7,7 @@
 #include "containers.h"
 #include "voice.h"
 #include "fe_vm.h"
+#include "fe_input.h"
 #include <string.h>
 
 static uint32_t guest_call(uint32_t pref, int nargs, const uint32_t *args) {
@@ -83,4 +84,23 @@ uint8_t vm_proc_guest(int inst, uint8_t n, int16_t *left, int16_t *len) {
     uint32_t fn = CODEADDR(DLLVAR(uint32_t, table[inst])[n]);
     uint32_t a[2] = { host_to_guest_ptr(left), host_to_guest_ptr(len) };
     return (uint8_t)guest_call(fn, 2, a);
+}
+
+int32_t fe_after_feed(FrontEnd *fe, int32_t r) {
+    uint32_t args[1] = { (uint32_t)r };
+    emu_cpu(decomp_emu)->s.r[ECX] = host_to_guest_ptr(fe);
+    return (int32_t)guest_call(0x63680c6e, 1, args);
+}
+
+int32_t text_from_other(char *text, GPTR(char) *out) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - 16u) & ~15u;
+    uint32_t g = c->s.r[ESP];
+    memcpy(decomp_guest_mem + g, out, 4);
+    uint32_t args[2] = { host_to_guest_ptr(text), g };
+    int32_t r = (int32_t)guest_call(0x636744c4, 2, args);
+    memcpy(out, decomp_guest_mem + g, 4);
+    c->s.r[ESP] = sp;
+    return r;
 }

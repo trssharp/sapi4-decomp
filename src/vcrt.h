@@ -32,6 +32,9 @@ int vc_stricmp_n(const char *a, const char *b, size_t n);   // raw difference, u
 int vc_memcmp(const void *a, const void *b, size_t n);
 char *vc_strrev(char *s);           // _strrev
 int32_t vc_atoi(const char *s);
+// bsearch as MSVCRT's (which element of equal ones it finds depends on the halving)
+const void *vc_bsearch(const void *key, const void *base, uint32_t num, uint32_t width,
+                       int (*cmp)(const void *, const void *));
 char *vc_lstrcpynA(char *d, const char *s, uint32_t n);   // KERNEL32 lstrcpynA
 uint32_t vc_CharLowerBuffA(char *s, uint32_t n);        // USER32 over CP1252; returns n
 uint32_t vc_CharUpperBuffA(char *s, uint32_t n);     // atoi as the emulator's MSVCRT (strtol, base 10, to 32 bits)
