@@ -96,11 +96,11 @@ void vecarray_destroy(VecArray *a) {
 
 int vecarray_init(VecArray *a, int n, int cap, int step) {
     a->count = n;
-    GPTR(IntVec) *items = vc_malloc((size_t)(uint32_t)(n * 4));
+    GPTR(IntVec) *items = vc_malloc((size_t)(uint32_t)n * sizeof(GPTR(IntVec)));
     GPSET(a->items, items);
     if (!items) return -1;
     for (int i = 0; i < a->count; i++) {
-        IntVec *v = vc_malloc(0x10);
+        IntVec *v = vc_malloc(sizeof(IntVec));
         GPSET(items[i], v ? intvec_ctor(v) : NULL);
         if (!items[i]) {
             a->count = i;
@@ -161,8 +161,8 @@ int32_t lattice_viterbi(VecArray *a, uint32_t fn) {
     }
     float *score = vc_calloc((size_t)(uint32_t)total, 4);
     int32_t *back = vc_calloc((size_t)(uint32_t)total, 4);
-    GPTR(float) *S = vc_malloc((size_t)(uint32_t)(a->count * 4));
-    GPTR(int32_t) *B = vc_malloc((size_t)(uint32_t)(a->count * 4));
+    GPTR(float) *S = vc_malloc((size_t)(uint32_t)a->count * sizeof(GPTR(float)));
+    GPTR(int32_t) *B = vc_malloc((size_t)(uint32_t)a->count * sizeof(GPTR(int32_t)));
     if (!S || !score || !B || !back) goto done;
     GPSET(S[0], score);
     GPSET(B[0], back);

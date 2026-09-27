@@ -23,7 +23,7 @@ LAYOUT(VocUnit, _1c, 0x1c);
 VocUnit *voc_unit_decode(int index, const VocVoice *v, VocSynthState *s) {
     float lsf[38], spec[512], buf[512];
     if (index < 0 || v->fft_n > 0x200) return NULL;
-    VocUnit *u = vc_malloc(0x20);
+    VocUnit *u = vc_malloc(sizeof(VocUnit));
     if (!u) return NULL;
     const uint8_t *p = GP(const uint8_t, GP(GPTR(const uint8_t), v->units)[index]);
     int32_t nframes;
@@ -366,9 +366,9 @@ int32_t voc_synth_request(VocEngine *v, const UnitOut *u, FloatBuf *out, int32_t
 
 void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n) {
     if (!pcm || !n) return;
-    QItem *it = vc_malloc(0x14);
+    QItem *it = vc_malloc(sizeof(QItem));
     if (!it) return;
-    memset(it, 0, 0x14);
+    memset(it, 0, sizeof(QItem));
     if (vc_WaitForSingleObject(v->ev_stop, 0) == 0) {
         vc_free(it);
         return;
@@ -376,7 +376,7 @@ void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n) {
     it->code = 0x1d;
     it->a.value = (uint32_t)v->effect;
     queue_push(GP(Queue, v->out), it);
-    memset(it, 0, 0x14);
+    memset(it, 0, sizeof(QItem));
     it->code = 6;
     if (v->pcm16) {
         uint32_t bytes = (uint32_t)n * 2u;
@@ -395,14 +395,13 @@ void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n) {
     v->chunks++;
     if (v->chunks == 5 || queue_is_full(GP(Queue, v->out))) {
         vc_PostMessageA(v->hwnd, v->msg, 0, 0);
-        const uint32_t *pr = (const uint32_t *)((const uint8_t *)v + 0xc4);
-        uint32_t lvl = *(const uint32_t *)((const uint8_t *)v + 0x118);
-        vc_SetThreadPriority(v->thread, (int32_t)pr[lvl * 3]);
+        vc_SetThreadPriority(v->thread, (int32_t)v->prio[v->level][0]);
     }
     vc_free(it);
 }
 
 LAYOUT(VocEngine, level, 0x118);
+LAYOUT(VocEngine, prio, 0xc4);
 LAYOUT(VocEngine, ev_done, 0x138);
 
 uint32_t identity32(uint32_t x) { return x; }

@@ -117,7 +117,7 @@ int16_t effect_build_stages(Effect *self, int16_t n, GPTR(Allpass) *stages, cons
                             const float *gains_db, float samples_per_ms) {
     int16_t r = 0;
     for (int i = 0; i < n; i++) {
-        Allpass *ap = vc_malloc(0x20);
+        Allpass *ap = vc_malloc(sizeof(Allpass));
         GPSET(stages[i], ap);
         if (!ap) return 1;
         int d = x87_ftol((double)delays_ms[i] * samples_per_ms);
@@ -148,9 +148,24 @@ GPTR(const EffectPreset) effect_preset(Effect *self, int mode) {
     (void)self;
     static const uint32_t table[8] = { 0, 0x6371f0a8, 0x6371f0c8, 0x6371f018, 0x6371f088, 0x6371f050, 0x6371f0e8, 0x6371f108 };
     if (mode >= 1 && mode <= 7) {
+#ifdef DECOMP_HOOK
         GPTR(const EffectPreset) p;
         GPSET(p, DLLVAR(const EffectPreset, table[mode]));
         return p;
+#else
+        // (the presets hold pointers: a portable build reads them field by field)
+        static EffectPreset host[8];
+        uint32_t a = table[mode];
+        EffectPreset *p = &host[mode];
+        p->send_db = *DLLVAR(const float, a);
+        p->dry_db = *DLLVAR(const float, a + 4);
+        p->nstages = *DLLVAR(const int16_t, a + 8);
+        p->_pad = *DLLVAR(const int16_t, a + 10);
+        p->delays = *DLLPTR(float, a + 0xc);
+        p->gains_db = *DLLPTR(float, a + 0x10);
+        p->warble = *DLLVAR(const float, a + 0x14);
+        return p;
+#endif
     }
 #ifdef DECOMP_HOOK
     return (uint32_t)mode;

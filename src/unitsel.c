@@ -4,6 +4,7 @@
 #include "x87.h"
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 
 LAYOUT(UnitRec, dur, 0x08);
 LAYOUT(UnitRec, c, 0x38);
@@ -507,20 +508,59 @@ LAYOUT(UnitStage, wait_out, 0x2ac);
 LAYOUT(UnitStage, cs, 0x2cc);
 LAYOUT(UnitStage, out, 0x2f0);
 
+// Blob and TagOut records go into the queues as QItems: the same five fields (in the hook build the
+// same bytes; a portable build copies them, its QItem's union being pointer-sized)
+static const QItem *blob_items(const Blob *b, uint32_t n, QItem *tmp) {
+#ifdef DECOMP_HOOK
+    (void)n; (void)tmp;
+    return (const QItem *)(const void *)b;
+#else
+    for (uint32_t i = 0; i < n; i++) {
+        memset(&tmp[i], 0, sizeof tmp[i]);
+        tmp[i].code = (uint32_t)b[i].type;
+        tmp[i].a.value = (uint32_t)b[i]._04;
+        tmp[i].v2 = (uint32_t)b[i]._08;
+        tmp[i].data = b[i].data;
+        tmp[i].bytes = (uint32_t)b[i].bytes;
+    }
+    return tmp;
+#endif
+}
+static const QItem *tag_item(const TagOut *t, QItem *tmp) {
+#ifdef DECOMP_HOOK
+    (void)tmp;
+    return (const QItem *)(const void *)t;
+#else
+    memset(tmp, 0, sizeof *tmp);
+    tmp->code = (uint32_t)t->code;
+    tmp->a.value = (uint32_t)t->value;
+    tmp->v2 = (uint32_t)t->_08;
+    tmp->data = t->text;
+    tmp->bytes = (uint32_t)t->text_bytes;
+    return tmp;
+#endif
+}
+
 void unit_send(UnitStage *u, UnitOutBuf *units) {
     uint32_t n = (uint32_t)units->bytes / 0x50u;
     if (!n) return;
     const UnitOut *src = GP(const UnitOut, units->units);
-    Blob *blobs = vc_malloc(n * 20u);
+    Blob *blobs = vc_malloc(n * (uint32_t)sizeof(Blob));
     if (!blobs) return;
-    memset(blobs, 0, n * 20u);
+    memset(blobs, 0, n * (uint32_t)sizeof(Blob));
     for (int32_t i = 0; i < (int32_t)n; i++) blob_copy80(src + i, blobs + i);
     int drop = locked_get_2cc(u) != 0;
     if (!drop) {
         if (vc_WaitForMultipleObjects(2, u->wait_out, 0, 0xffffffffu) == 0) drop = 1;
         else {
             vc_WaitForMultipleObjects(2, u->wait_out, 0, 0xffffffffu);
-            queue_push_n(GP(Queue, u->out), (const QItem *)blobs, n);
+#ifdef DECOMP_HOOK
+            queue_push_n(GP(Queue, u->out), blob_items(blobs, n, NULL), n);
+#else
+            QItem *tmp = malloc(n * sizeof(QItem));
+            queue_push_n(GP(Queue, u->out), blob_items(blobs, n, tmp), n);
+            free(tmp);
+#endif
         }
     }
     if (drop)
@@ -546,20 +586,20 @@ int32_t unit_phrase(UnitStage *u, PhoneIn *ph, int32_t n) {
     while (i < n) {
         char c = p->name[0];
         if (c == '\\') {
-            TagOut *tag = vc_malloc(0x14);
+            TagOut *tag = vc_malloc(sizeof(TagOut));
             if (!tag) return 0;
-            memset(tag, 0, 0x14);
+            memset(tag, 0, sizeof(TagOut));
             tag_parse(p->name, tag);
             if (tag->code == 0x19) {
                 unit_set_amp(u, 0xffffffffu);
                 unit_reset_rate(u);
-                queue_push(GP(Queue, u->out), (const QItem *)tag);
+                { QItem tq; queue_push(GP(Queue, u->out), tag_item(tag, &tq)); }
             } else if (tag->code == 0x1c) {
                 unit_set_amp(u, (uint32_t)tag->value);
             } else if (tag->code == 0x1a) {
                 unit_set_rate(u, (uint32_t)tag->value);
             } else {
-                queue_push(GP(Queue, u->out), (const QItem *)tag);
+                { QItem tq; queue_push(GP(Queue, u->out), tag_item(tag, &tq)); }
             }
             vc_free(tag);
             i++;
@@ -843,7 +883,7 @@ int32_t unit_lattice(UnitStage *u, GPTR(PhoneIn) *ph, int32_t *n) {
         return m;
     }
     result = m;
-    VecArray *v = vc_malloc(0x14);
+    VecArray *v = vc_malloc(sizeof(VecArray));
     va = v ? vecarray_ctor(v) : NULL;
     vecarray_init(va, m, 10, -1);
     for (int32_t i = 0; i < m; i++) {

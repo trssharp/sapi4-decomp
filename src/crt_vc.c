@@ -73,6 +73,7 @@ void vc_InitializeCriticalSection(void *cs) { (void)cs; }
 static int vc_event(uint32_t h) { return h > 0x100 && h < 0x100 + 64 && vc_events[h - 0x100].used ? (int)(h - 0x100) : 0; }
 int32_t vc_SetEvent(uint32_t h) { int i = vc_event(h); if (i) vc_events[i].set = 1; return i != 0; }
 int32_t vc_ResetEvent(uint32_t h) { int i = vc_event(h); if (i) vc_events[i].set = 0; return i != 0; }
+extern void (*vc_idle_hook)(void);
 uint32_t vc_WaitForMultipleObjects(uint32_t n, const uint32_t *hs, int all, uint32_t ms) {
     (void)ms;
     if (all) {
@@ -87,8 +88,10 @@ uint32_t vc_WaitForMultipleObjects(uint32_t n, const uint32_t *hs, int all, uint
             return k;
         }
     }
+    if (ms == 0xffffffffu && vc_idle_hook) vc_idle_hook();
     return 0x102;       // (nothing else can set it: a wait would never end)
 }
+void (*vc_idle_hook)(void);
 uint32_t vc_WaitForSingleObject(uint32_t h, uint32_t ms) { return vc_WaitForMultipleObjects(1, &h, 0, ms); }
 int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) { (void)hwnd; (void)msg; (void)wp; (void)lp; return 1; }
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio) { (void)h; (void)prio; return 1; }
@@ -240,9 +243,12 @@ int32_t vc_com_call(void *obj, int slot, int nargs, const uint32_t *args) {
     (void)obj; (void)slot; (void)nargs; (void)args;
     return (int32_t)0x80004005u;
 }
-static _Thread_local uint32_t vc_seed = 1;
+static _Thread_local uint32_t vc_seed_own = 1;
+static _Thread_local uint32_t *vc_seed;
+void vc_rand_use(uint32_t *state) { vc_seed = state; }
 int vc_rand(void) {
-    vc_seed = vc_seed * 214013u + 2531011u;
-    return (int)((vc_seed >> 16) & 0x7fff);
+    uint32_t *s = vc_seed ? vc_seed : &vc_seed_own;
+    *s = *s * 214013u + 2531011u;
+    return (int)((*s >> 16) & 0x7fff);
 }
 #endif

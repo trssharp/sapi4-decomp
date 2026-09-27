@@ -103,3 +103,12 @@ port-fe-baked-check: build/port_fe_baked build/port_fe
 	@./build/port_fe_baked < build/port_fe_texts.txt > build/port_fe_baked_out.txt
 	@if cmp -s build/port_fe_ref.txt build/port_fe_baked_out.txt; then echo "PORT-FE (baked image): identical to the image loaded from the DLL"; else echo "PORT-FE (baked): DIFFERENT"; exit 1; fi
 .PHONY: port-fe-baked-check
+
+# text to speech with the C alone (voices, front end, unit stage, synthesizer), against the golden renders
+PORTALL = $(wildcard src/*.c)
+build/port_render: port/render.c port/dllimage.c port/dllimage.h $(PORTALL) $(wildcard src/*.h)
+	@mkdir -p build
+	$(PORTCC) -o $@ port/render.c port/dllimage.c $(PORTALL) -lm
+port-render-check: build/port_render
+	@./tools/port_render_check.sh
+.PHONY: port-render-check

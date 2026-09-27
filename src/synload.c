@@ -10,6 +10,9 @@
 
 LAYOUT(VocVoice, _40, 0x40);
 LAYOUT(ModeTable, inv, 0x20);
+#ifdef DECOMP_HOOK
+_Static_assert(sizeof(VocVoice) == 0x44, "VocVoice");
+#endif
 
 float voc_gauss(int32_t *have, float *a, float *b) {
     if (*have == 1) {
@@ -64,9 +67,9 @@ float *voc_fade_window(int32_t n) {
 }
 
 VocVoice *voc_header_load(void *stm) {
-    VocVoice *v = vc_malloc(0x44);
+    VocVoice *v = vc_malloc(sizeof(VocVoice));
     if (!v) return NULL;
-    memset(v, 0, 0x44);
+    memset(v, 0, sizeof(VocVoice));
     uint32_t got;
     vc_stm_read(stm, &v->noise_len, 4, &got);
     GPSET(v->noise, voc_noise_make(v->noise_len));
@@ -226,7 +229,7 @@ void voc_init(VocEngine *v, int32_t style) {
     for (uint32_t i = 0; i < n; i++) {
         int32_t key, len;
         const uint8_t *rec = voice_rec(d, i, &key, &len);
-        int32_t arg = *(const int32_t *)(const void *)rec;
+#define ARG (*(const int32_t *)(const void *)rec)    // (read only by the records that have one)
         switch (key & 0xffffff) {
         case 1:
             s->flags |= 1;
@@ -234,9 +237,9 @@ void voc_init(VocEngine *v, int32_t style) {
         case 2:
         case 3:
             s->flags = (key & 0xffffff) == 2 ? (s->flags & ~4u) | 2 : (s->flags & ~2u) | 4;
-            s->forder = arg;
+            s->forder = ARG;
             {
-                float *m = vc_realloc(GP(void, s->fmem), (size_t)(uint32_t)arg * 4);
+                float *m = vc_realloc(GP(void, s->fmem), (size_t)(uint32_t)s->forder * 4);
                 GPSET(s->fmem, m);
                 GPSET(s->fcoef, (const float *)(const void *)(rec + 4));
                 memset(m, 0, (size_t)(uint32_t)s->forder * 4);
@@ -244,10 +247,10 @@ void voc_init(VocEngine *v, int32_t style) {
             break;
         case 4:
             if (!s->effect) {
-                Effect *ef = vc_malloc(0x3c);
+                Effect *ef = vc_malloc(sizeof(Effect));
                 if (ef) ef = effect_ctor(ef);
                 GPSET(s->effect, ef);
-                if (ef && effect_init(ef, arg, (int)v->rate) != 0) {
+                if (ef && effect_init(ef, ARG, (int)v->rate) != 0) {
                     Effect *e2 = GP(Effect, s->effect);
                     if (e2) {
                         effect_free(e2);
@@ -258,11 +261,12 @@ void voc_init(VocEngine *v, int32_t style) {
             s->flags |= 8;
             break;
         case 6:
-            if (s->effect) effect_set_fir(GP(Effect, s->effect), arg, (const float *)(const void *)(rec + 4));
+            if (s->effect) effect_set_fir(GP(Effect, s->effect), ARG, (const float *)(const void *)(rec + 4));
             break;
         default:
             break;
         }
+#undef ARG
     }
 }
 

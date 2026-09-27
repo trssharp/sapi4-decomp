@@ -9,6 +9,12 @@ void vc_qsort(void *base, size_t num, size_t width, int (*cmp)(const void *, con
 // rand() as MSVCRT has it (per-thread state, seed 1): the effects' RoboSoft warble depends on the
 // exact sequence. In the hook build this advances the calling guest thread's own state.
 int vc_rand(void);
+#ifndef DECOMP_HOOK
+// portable build: whose rand state vc_rand advances (a single-threaded driver running the engine's
+// threads one after another gives each its own, starting at 1 as MSVCRT's per-thread state does;
+// NULL: the calling thread's own)
+void vc_rand_use(uint32_t *state);
+#endif
 // malloc / free on the engine's heap (in the hook build the guest heap, so the original code can use
 // what the decompiled code allocates, in the same order and at the same addresses)
 void *vc_malloc(size_t n);
@@ -43,6 +49,11 @@ int32_t vc_SetEvent(uint32_t h);
 int32_t vc_ResetEvent(uint32_t h);
 uint32_t vc_WaitForSingleObject(uint32_t h, uint32_t ms);
 uint32_t vc_WaitForMultipleObjects(uint32_t n, const uint32_t *hs, int all, uint32_t ms);
+#ifndef DECOMP_HOOK
+// portable build: called when a thread would wait forever (nothing set, no timeout); a single-threaded
+// driver runs a stage's thread loop until then and leaves it from here (longjmp)
+extern void (*vc_idle_hook)(void);
+#endif
 int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp);
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio);
 void vc_DebugBreak(void);
