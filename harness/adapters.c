@@ -9,6 +9,7 @@
 #include "voice.h"
 #include "tags.h"
 #include "containers.h"
+#include "senone.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -214,3 +215,8 @@ void hk_vecarray_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(vecarray_ctor(THIS(V
 void hk_vecarray_destroy(Emu *e, X86 *c) { vecarray_destroy(THIS(VecArray)); }
 void hk_vecarray_init(Emu *e, X86 *c) { E_RET(vecarray_init(THIS(VecArray), AI(0), AI(1), AI(2))); }
 void hk_blob_copy80(Emu *e, X86 *c) { E_RET(blob_copy80(GPH(uint8_t, A(0), 0x50), GPH(Blob, A(1), sizeof(Blob)))); }
+
+void hk_senone_lookup(Emu *e, X86 *c) {
+    E_RET(senone_lookup(GPH(SenoneTree, A(0), sizeof(SenoneTree)), AI(1), AI(2), AI(3), AI(4), AI(5)));
+}
+void hk_phone_fixups(Emu *e, X86 *c) { int n = AI(1); phone_fixups(n > 0 ? GPH(char, A(0), 100u * n) : NULL, n); }

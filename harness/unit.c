@@ -11,6 +11,7 @@
 #include "codec.h"
 #include "effect.h"
 #include "tags.h"
+#include "senone.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -441,6 +442,64 @@ static void t_tags(int iter) {
     check("tag_lex", iter, "position", &end1, &end2, 4);
 }
 
+// a random senone tree in guest memory, then random lookups (the function is pure)
+static void t_senone(int iter) {
+    const int np = 12, nm = 4, ns = 3, nn = 40, nq = 30, stride = 4;
+    static const char *nm_[12] = { "SIL", "+br", "AA1", "B", "sil", "K", "IY0", "T", "S", "+um", "N", "L" };
+    uint32_t gnames = galloc(4u * np);
+    for (int i = 0; i < np; i++) { uint32_t g = galloc(8); memcpy(gp(g, 8), nm_[i], strlen(nm_[i]) + 1); wr32(C, gnames + 4u * i, g); }
+    uint32_t gps = galloc(sizeof(PhoneSet)); PhoneSet *ps = gp(gps, sizeof *ps); memset(ps, 0, sizeof *ps);
+    ps->names = gnames; ps->count = np;
+    uint32_t ghdr = galloc(sizeof(SenoneHeader)); SenoneHeader *h = gp(ghdr, sizeof *h); memset(h, 0, sizeof *h);
+    h->right_base = 1; h->bit_offset = (iter & 1) ? 3 : 0;
+    uint32_t gmodel = galloc(np), gnst = galloc(nm);
+    for (int i = 0; i < np; i++) ((int8_t *)gp(gmodel, np))[i] = (int8_t)(rnd() % nm);
+    for (int i = 0; i < nm; i++) ((int8_t *)gp(gnst, nm))[i] = (int8_t)rndi(1, ns);
+    uint32_t gq = galloc(4u * stride * nq);
+    for (int i = 0; i < stride * nq; i++) ((uint32_t *)gp(gq, 4u * stride * nq))[i] = rnd() | rnd();
+    uint32_t gql = galloc(2u * 200);
+    uint16_t *ql = gp(gql, 400);
+    for (int i = 0; i < 200; i++) ql[i] = (rnd() % 4 == 0) ? 0xffff : (uint16_t)(rnd() % nq);
+    ql[199] = 0xffff;
+    uint32_t groots = galloc(4u * nm);
+    for (int m = 0; m < nm; m++) {
+        uint32_t gr = galloc(8u * ns);
+        for (int st = 0; st < ns; st++) {
+            uint32_t gn = galloc(8u * nn);
+            TreeNode *nd = gp(gn, 8u * nn);
+            for (int k = 0; k < nn; k++) {
+                nd[k].qlist = (uint16_t)(rnd() % 190);
+                if (k >= nn / 2 || rnd() % 5 == 0) { nd[k].yes = -1; nd[k].no = (int16_t)(rnd() % 5000); }
+                else { nd[k].yes = (int16_t)rndi(k + 1, nn - 1); nd[k].no = (int16_t)rndi(k + 1, nn - 1); }
+            }
+            TreeRoot *r = gp(gr + 8u * st, 8); r->present = (uint16_t)(rnd() % 6 != 0); r->nodes = gn;
+        }
+        wr32(C, groots + 4u * m, gr);
+    }
+    uint32_t gt = galloc(sizeof(SenoneTree)); SenoneTree *t = gp(gt, sizeof *t); memset(t, 0, sizeof *t);
+    t->hdr = ghdr; t->phones = gps; t->ignore_position = (iter % 5 == 0); t->sil = 0; t->word_end_right = (iter % 3) ? 4 : -1;
+    t->flags = (iter & 2) ? 2 : 0; t->nstates = gnst; t->model = gmodel; t->roots = groots; t->qbits = gq; t->qstride = stride; t->qlists = gql;
+    static const int posv[] = { 'b', 'B', 'e', 'E', 's', 'S', 0, 'x' };
+    for (int k = 0; k < 40; k++) {
+        int cur = rndi(-1, np), l = rndi(-1, np), r = rndi(-1, np), pos = posv[rnd() % 8], st = rndi(-1, ns);
+        uint32_t a[6] = { gt, (uint32_t)cur, (uint32_t)l, (uint32_t)r, (uint32_t)pos, (uint32_t)st };
+        uint32_t r1 = call(0x63674184, 6, a);
+        uint32_t r2 = (uint32_t)senone_lookup(t, cur, l, r, pos, st);
+        check("senone_lookup", iter, "result", &r1, &r2, 4);
+    }
+    // phone fix-ups
+    static const char *ph[] = { "DX", "AW0", "AY0", "EY0", "OY0", "OY1", "T", "dx", "AW", "" };
+    int n = rndi(0, 12);
+    uint32_t gph = galloc(100u * (n ? n : 1));
+    for (int i = 0; i < n; i++) { memset(gp(gph + 100u * i, 100), 'z', 100); strcpy(gp(gph + 100u * i, 100), ph[rnd() % 10]); }
+    char save[1200]; memcpy(save, gp(gph, 100u * (n ? n : 1)), 100u * (n ? n : 1));
+    uint32_t a2[2] = { gph, (uint32_t)n }; call(0x636876b2, 2, a2);
+    char o1[1200]; memcpy(o1, gp(gph, 100u * (n ? n : 1)), 100u * (n ? n : 1));
+    memcpy(gp(gph, 100u * (n ? n : 1)), save, 100u * (n ? n : 1));
+    phone_fixups(gp(gph, 100u * (n ? n : 1)), n);
+    check("phone_fixups", iter, "names", o1, gp(gph, 100u * (n ? n : 1)), 100u * (n ? n : 1));
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -464,6 +523,7 @@ int main(int argc, char **argv) {
         t_period(it);
         t_effect(it);
         t_tags(it);
+        t_senone(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
