@@ -656,16 +656,163 @@ int lattice_match(const char *key, const int16_t *sen, int32_t n_rest, int32_t *
     return 0;
 }
 
-typedef struct SpanEntry { int32_t first; uint8_t _04[0x1c]; GPTR(const int16_t) f20; GPTR(const int32_t) f24; GPTR(const int32_t) f28; } SpanEntry;
-LAYOUT(SpanEntry, f28, 0x28);
-int32_t unit_span_lookup(int32_t x, int32_t n, GPTR(const void) *table, int32_t *out28, int32_t *out20) {
+const int16_t *unit_span_lookup(int32_t x, int32_t n, GPTR(const AltBucket) const *table, GPTR(const char) *tail,
+                               int32_t *nunits) {
     int32_t i = 0;
-    while (i < n && x >= GP(const SpanEntry, table[i + 1])->first) i++;
-    const SpanEntry *e = GP(const SpanEntry, table[i]);
-    int32_t k = x - e->first;
-    *out28 = GP(const int32_t, e->f28)[k];
-    *out20 = GP(const int16_t, e->f20)[k];
-    return GP(const int32_t, e->f24)[k];
+    while (i < n && x >= GP(const AltBucket, table[i + 1])->first_id) i++;
+    const AltBucket *b = GP(const AltBucket, table[i]);
+    int32_t k = x - b->first_id;
+    *tail = GP(GPTR(const char), b->tails)[k];
+    *nunits = GP(const int16_t, b->nunits)[k];
+    return GP(const int16_t, GP(GPTR(const int16_t), b->units)[k]);
+}
+
+static int is_mark_ph(const PhoneIn *p) { return p->name[0] == '#' || p->name[0] == '\\'; }
+
+// remove phone pi of the phrase and unit k of the stage's arrays
+static void drop_phone(UnitStage *u, PhoneIn *ph, int32_t *n, int32_t pi, int32_t k) {
+    memmove(ph + pi, ph + pi + 1, (size_t)(uint32_t)(*n * 100 - (pi + 1) * 100));
+    UnitRec *r = GP(UnitRec, u->recs);
+    memmove(r + k, r + k + 1, (size_t)(uint32_t)(u->cap * 0x4c - (k + 1) * 0x4c));
+    int16_t *ids = GP(int16_t, u->ids), *sen = GP(int16_t, u->senones);
+    memmove(ids + k, ids + k + 1, (size_t)(uint32_t)((u->cap - (k + 1)) * 2));
+    memmove(sen + k, sen + k + 1, (size_t)(uint32_t)((u->cap - (k + 1)) * 2));
+    (*n)--;
+}
+
+static int8_t word_pos(const uint8_t *bounds, int32_t k, int32_t limit) {
+    int8_t pos = 0;
+    if (bounds[k]) {
+        if (k + 1 < limit && bounds[k + 1]) pos = 's';
+        else if (bounds[k]) pos = 'b';
+    } else if (k + 1 < limit && bounds[k + 1]) {
+        pos = 'e';
+    }
+    return pos;
+}
+
+static int32_t senone_of(const UnitStage *u, int32_t cur, int32_t left, int32_t right, int8_t pos) {
+    if (u->tree_mode == 1) return senone_lookup(GP(const SenoneTree, u->tree), cur, left, right, pos, 0);
+    TreeQuery q;
+    memset(&q, 0, sizeof q);   // (the original leaves the unnamed bytes as stack garbage)
+    q.cur = (int16_t)cur;
+    q.left = (int16_t)left;
+    q.right = (int16_t)right;
+    q.pos = pos;
+    q._2c = 0;
+    return tree_query(GP(const SenoneTree, u->tree), &q);
+}
+
+int32_t unit_lattice_apply(UnitStage *u, GPTR(PhoneIn) *php, int32_t *n, int32_t m, VecArray *va,
+                           uint8_t *bounds) {
+    int32_t j = 0, k = 0, pi = 0, delta = 0, changed = 0, prev_changed = 0;
+    if (m <= 0) return m;
+#define PH GP(PhoneIn, *php)
+#define SKIP_MARKS() while (is_mark_ph(PH + pi)) pi++
+    const int32_t *res = GP(const int32_t, va->result);
+    do {
+        SKIP_MARKS();
+        int32_t j0 = j;
+        if (res[j] == 0) {
+            j++, k++, pi++;
+            continue;
+        }
+        GPTR(const char) tailp;
+        int32_t nrule;
+        const int16_t *units = unit_span_lookup(res[j] - 1, u->senone_base, GP(GPTR(const AltBucket), u->lattice),
+                                                &tailp, &nrule);
+        const char *tail = GP(const char, tailp);
+        int32_t t = 0, k0 = k;
+        int32_t tlen = (int32_t)strlen(tail);
+        int32_t limit = delta + m;
+        for (;;) {
+            if (res[j] != res[j0] && t == tlen) break;
+            int32_t idx = k - k0;
+            const int16_t *up = units + idx;
+            if (*up & 0x2000) {             // two phones merge into this one
+                drop_phone(u, PH, n, pi, k);
+                SKIP_MARKS();
+                drop_phone(u, PH, n, pi, k);
+                SKIP_MARKS();
+                delta -= 2;
+                limit -= 2;
+                j += 2;
+                GP(int16_t, u->senones)[k] = (int16_t)(*up & 0x1fff);
+                changed = 1;
+            }
+            int drop = 0;
+            if (idx >= nrule) {
+                drop = 1;
+            } else if ((*up & 0x8000) && (*up & 0x4000)) {      // the phone is replaced
+                GP(int16_t, u->ids)[k] = (int16_t)(int8_t)tail[t];
+                GP(UnitRec, u->recs)[k].phone = GP(int16_t, u->ids)[k];
+                strcpy(PH[pi].name, GP(const char, named_item(GP(const NamedTable, u->phone_names), (int8_t)tail[t])));
+                changed = 1;
+                GP(int16_t, u->senones)[k] = (int16_t)(*up & 0x1fff);
+                t++;
+            } else if (*up & 0x8000) {      // a phone is inserted
+                (*n)++;
+                delta++;
+                limit++;
+                GPSET(*php, (PhoneIn *)vc_realloc(GP(void, *php), (size_t)(uint32_t)(*n * 100)));
+                memmove(PH + pi + 1, PH + pi, (size_t)(uint32_t)(*n * 100 - (pi + 1) * 100));
+                PH[pi].nstates = 0;
+                PH[pi].dur = u->sil_phone == (int8_t)tail[t] ? *DLLVAR(const float, 0x636a02bc) : 1.0f;
+                strcpy(PH[pi].name, GP(const char, named_item(GP(const NamedTable, u->phone_names), (int8_t)tail[t])));
+                if (u->cap < limit) {
+                    u->cap = delta + m + 3;
+                    GPSET(u->recs, (UnitRec *)vc_realloc(GP(void, u->recs), (size_t)(uint32_t)(u->cap * 0x4c)));
+                    GPSET(u->ids, (int16_t *)vc_realloc(GP(void, u->ids), (size_t)(uint32_t)(u->cap * 2)));
+                    GPSET(u->senones, (int16_t *)vc_realloc(GP(void, u->senones), (size_t)(uint32_t)(u->cap * 2)));
+                }
+                UnitRec *r = GP(UnitRec, u->recs);
+                memmove(r + k + 1, r + k, (size_t)(uint32_t)(u->cap * 0x4c - (k + 1) * 0x4c));
+                int16_t *ids = GP(int16_t, u->ids), *sen = GP(int16_t, u->senones);
+                memmove(ids + k + 1, ids + k, (size_t)(uint32_t)((u->cap - (k + 1)) * 2));
+                memmove(sen + k + 1, sen + k, (size_t)(uint32_t)((u->cap - (k + 1)) * 2));
+                ids[k] = (int16_t)(int8_t)tail[t];
+                changed = 1;
+                r[k].phone = ids[k];
+                t++;
+                j--;
+                sen[k] = (int16_t)(*up & 0x1fff);
+            } else if (!(*up & 0x4000)) {  // the unit is swapped
+                GP(int16_t, u->senones)[k] = (int16_t)(*up & 0x1fff);
+            } else {
+                drop = 1;
+            }
+            if (drop) {                     // the phone is deleted
+                drop_phone(u, PH, n, pi, k);
+                SKIP_MARKS();
+                delta--;
+                limit--;
+                GP(int16_t, u->senones)[k] = (int16_t)(*up & 0x1fff);   // (read even past the rule's units)
+                changed = 1;
+                j++;
+            }
+            if (prev_changed || changed) {  // the senones around an edit follow the new context
+                UnitRec *r = GP(UnitRec, u->recs);
+                int32_t left = k == 0 ? u->sil_phone : r[k - 1].phone;
+                int32_t right = (limit == k && t == tlen) ? u->sil_phone : r[k + 1].phone;
+                r[k].senone = senone_of(u, r[k].phone, left, right, word_pos(bounds, k, limit));
+                if (changed && k != 0) {
+                    int8_t pos = 0;
+                    if (bounds[k - 1]) pos = bounds[k] ? 's' : 'b';
+                    else if (bounds[k]) pos = 'e';
+                    left = k - 1 == 0 ? u->sil_phone : r[k - 2].phone;
+                    right = (limit == k - 1 && t == tlen) ? u->sil_phone : r[k].phone;
+                    r[k - 1].senone = senone_of(u, r[k - 1].phone, left, right, pos);
+                }
+            }
+            prev_changed = changed;
+            changed = 0;
+            j++, k++, pi++;
+            SKIP_MARKS();
+        }
+    } while (j < m);
+#undef SKIP_MARKS
+#undef PH
+    return m + delta;
 }
 
 int32_t unit_lattice(UnitStage *u, GPTR(PhoneIn) *ph, int32_t *n) {

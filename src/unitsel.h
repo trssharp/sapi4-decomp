@@ -118,10 +118,13 @@ int32_t senone_tree_load_old(void *stg, const char *name, const void *ps, GPTR(S
 // (*pos after it), 0 = no more.
 int lattice_match(const char *key, const int16_t *sen, int32_t n_rest, int32_t *pos, int32_t i,
                   const AltRules *rules, VecArray *va);
-// @0x63685d18 stdcall: the table entry holding unit x (entries sorted by first id); returns its 0x24
-// value and stores the 0x28 and 0x20 values
-int32_t unit_span_lookup(int32_t x, int32_t n, GPTR(const void) *table, int32_t *out28, int32_t *out20);
-// @0x63685d72 thiscall (not decompiled yet): rewrite the phrase with the chosen units
+// @0x63685d18 stdcall: the rule behind unit id x + 1 (buckets sorted by first id): its proposed units;
+// *tail = its tail string (one phone index per byte), *nunits = how many units it proposes
+const int16_t *unit_span_lookup(int32_t x, int32_t n, GPTR(const AltBucket) const *table, GPTR(const char) *tail,
+                               int32_t *nunits);
+// @0x63685d72 thiscall: rewrite the phrase with the units the search chose: per rule, phones are
+// swapped for other units, replaced, inserted, deleted or merged, and the senones next to an edit are
+// looked up again in their new context. Returns the new number of units.
 int32_t unit_lattice_apply(UnitStage *u, GPTR(PhoneIn) *ph, int32_t *n, int32_t m, VecArray *va,
                            uint8_t *bounds);
 // @0x63686614 thiscall: the alternative-unit search (on when `lattice`): may rewrite the phrase and

@@ -350,6 +350,9 @@ static void heap_snap(HeapSnap *h) {
     memcpy(h->freel, E->heap_free, sizeof h->freel); h->large = E->heap_large; h->live = E->heap_live;
 }
 static void heap_restore(const HeapSnap *h) {
+    // (memory above the snapshot's top goes back to what it was, unused: the second run must not see
+    // the first run's blocks through memory it allocates fresh)
+    if (E->heap_next > h->next) memset(E->mem + h->next, 0, E->heap_next - h->next);
     memcpy(E->mem + EMU_HEAP_BASE, h->mem, h->n);
     E->heap_next = h->next; memcpy(E->heap_free, h->freel, sizeof h->freel); E->heap_large = h->large; E->heap_live = h->live;
 }
@@ -471,13 +474,14 @@ static void t_tags(int iter) {
 }
 
 // a random senone tree in guest memory, then random lookups (the function is pure)
-static void t_senone(int iter) {
+// a random senone tree over 12 phones (items and names both set to the phone names)
+static uint32_t mk_tree(int iter) {
     const int np = 12, nm = 4, ns = 3, nn = 40, nq = 30, stride = 4;
     static const char *nm_[12] = { "SIL", "+br", "AA1", "B", "sil", "K", "IY0", "T", "S", "+um", "N", "L" };
     uint32_t gnames = galloc(4u * np);
     for (int i = 0; i < np; i++) { uint32_t g = galloc(8); memcpy(gp(g, 8), nm_[i], strlen(nm_[i]) + 1); wr32(C, gnames + 4u * i, g); }
     uint32_t gps = galloc(sizeof(PhoneSet)); PhoneSet *ps = gp(gps, sizeof *ps); memset(ps, 0, sizeof *ps);
-    ps->names = gnames; ps->count = np;
+    ps->names = gnames; ps->items = gnames; ps->count = np;
     uint32_t ghdr = galloc(sizeof(SenoneHeader)); SenoneHeader *h = gp(ghdr, sizeof *h); memset(h, 0, sizeof *h);
     h->right_base = 1; h->bit_offset = (iter & 1) ? 3 : 0;
     uint32_t gmodel = galloc(np), gnst = galloc(nm);
@@ -507,12 +511,18 @@ static void t_senone(int iter) {
     uint32_t gt = galloc(sizeof(SenoneTree)); SenoneTree *t = gp(gt, sizeof *t); memset(t, 0, sizeof *t);
     t->hdr = ghdr; t->phones = gps; t->ignore_position = (iter % 5 == 0); t->sil = 0; t->word_end_right = (iter % 3) ? 4 : -1;
     t->flags = (iter & 2) ? 2 : 0; t->nstates = gnst; t->model = gmodel; t->roots = groots; t->qbits = gq; t->qstride = stride; t->qlists = gql;
+    return gt;
+}
+
+static void t_senone(int iter) {
+    const int np = 12, ns = 3;
+    uint32_t gt = mk_tree(iter);
     static const int posv[] = { 'b', 'B', 'e', 'E', 's', 'S', 0, 'x' };
     for (int k = 0; k < 40; k++) {
         int cur = rndi(-1, np), l = rndi(-1, np), r = rndi(-1, np), pos = posv[rnd() % 8], st = rndi(-1, ns);
         uint32_t a[6] = { gt, (uint32_t)cur, (uint32_t)l, (uint32_t)r, (uint32_t)pos, (uint32_t)st };
         uint32_t r1 = call(0x63674184, 6, a);
-        uint32_t r2 = (uint32_t)senone_lookup(t, cur, l, r, pos, st);
+        uint32_t r2 = (uint32_t)senone_lookup(gp(gt, sizeof(SenoneTree)), cur, l, r, pos, st);
         check("senone_lookup", iter, "result", &r1, &r2, 4);
     }
     // phone fix-ups
@@ -526,6 +536,119 @@ static void t_senone(int iter) {
     memcpy(gp(gph, 100u * (n ? n : 1)), save, 100u * (n ? n : 1));
     phone_fixups(gp(gph, 100u * (n ? n : 1)), n);
     check("phone_fixups", iter, "names", o1, gp(gph, 100u * (n ? n : 1)), 100u * (n ? n : 1));
+}
+
+// unit_lattice_apply on random, consistent rule sets: the search's result names a rule for a run of
+// positions exactly as long as the rule consumes; phrase, stage arrays and heap compared
+static int lat_runs;
+static void t_latapply(int iter) {
+    const int np = 12;
+    uint32_t gt = mk_tree(iter);
+    SenoneTree *tr = gp(gt, sizeof(SenoneTree));
+    int m = rndi(1, 24);
+    // rules: nb + 1 buckets (the lookup reads one past the last), each 1..3 rules of 1..4 units
+    int nb = rndi(1, 3), first = 0;
+    int dsum[64], nrules = 0;
+    uint32_t grules = galloc(4u * (nb + 1));
+    for (int b = 0; b <= nb; b++) {
+        int cnt = rndi(1, 3);
+        uint32_t gb = galloc(sizeof(AltBucket));
+        AltBucket *bk = gp(gb, sizeof *bk);
+        memset(bk, 0, sizeof *bk);
+        bk->first_id = first;
+        bk->count = cnt;
+        uint32_t gnu = galloc(2u * cnt), gun = galloc(4u * cnt), gta = galloc(4u * cnt);
+        bk->nunits = gnu; bk->units = gun; bk->tails = gta;
+        for (int r = 0; r < cnt; r++) {
+            int nr = rndi(1, 4), d = 0, nt = 0;
+            uint32_t gu16 = galloc(2u * (nr + 2)), gtail = galloc(8);
+            int16_t *us = gp(gu16, 2u * (nr + 2));
+            char *tl = gp(gtail, 8);
+            for (int q = 0; q < nr; q++) {
+                int kind = rndi(0, 3);
+                uint16_t v = (uint16_t)(rnd() % 0x2000);
+                if (kind == 1) { v |= 0xc000; d += 1; tl[nt++] = (char)rndi(1, np - 1); }
+                else if (kind == 2) { v |= 0x8000; tl[nt++] = (char)rndi(1, np - 1); }
+                else if (kind == 3) { v |= 0x4000; d += 2; }
+                else d += 1;
+                if (rnd() % 8 == 0) { v |= 0x2000; d += 2; }
+                us[q] = (int16_t)v;
+            }
+            us[nr] = us[nr + 1] = 0;
+            tl[nt] = 0;
+            ((int16_t *)gp(gnu, 2u * cnt))[r] = (int16_t)nr;
+            ((uint32_t *)gp(gun, 4u * cnt))[r] = gu16;
+            ((uint32_t *)gp(gta, 4u * cnt))[r] = gtail;
+            if (nrules < 64) dsum[nrules++] = d;
+        }
+        first += cnt;
+        wr32(C, grules + 4u * b, gb);
+    }
+    int nid = first < nrules ? first : nrules;
+    // the search's result
+    uint32_t gres = galloc(4u * (m + 8));
+    int32_t *res = gp(gres, 4u * (m + 8));
+    memset(res, 0, 4u * (m + 8));
+    int prev = 0;
+    for (int j = 0; j < m;) {
+        int x = rndi(1, nid);
+        if (rnd() % 2 && dsum[x - 1] > 0 && j + dsum[x - 1] <= m && x != prev) {
+            for (int q = 0; q < dsum[x - 1]; q++) res[j + q] = x;
+            j += dsum[x - 1];
+            prev = x;
+            lat_runs++;
+        } else {
+            res[j++] = 0;
+            prev = 0;
+        }
+    }
+    uint32_t gva = galloc(sizeof(VecArray));
+    VecArray *va = gp(gva, sizeof *va);
+    memset(va, 0, sizeof *va);
+    va->result = gres;
+    // the phrase: m phones with word marks between them, and three more at the end
+    int n = 0;
+    uint32_t gph = galloc(100u * (3 * m + 3));
+    for (int i = 0; i < m + 3; i++) {
+        if (i && rnd() % 3 == 0) { char *p = gp(gph + 100u * n++, 100); memset(p, 0, 100); strcpy(p, rnd() % 2 ? "#" : "\\x"); }
+        PhoneIn *p = gp(gph + 100u * n++, 100);
+        for (int q = 0; q < 100; q++) ((uint8_t *)p)[q] = (uint8_t)rnd();
+        strcpy(p->name, "AA1");
+    }
+    // the stage
+    int cap = m + rndi(4, 10);
+    uint32_t gu = galloc(sizeof(UnitStage));
+    UnitStage *u = gp(gu, sizeof *u);
+    memset(u, 0, sizeof *u);
+    uint32_t grec = galloc(0x4cu * cap), gids = galloc(2u * cap), gsen = galloc(2u * cap);
+    for (uint32_t q = 0; q < 0x4cu * cap; q++) ((uint8_t *)gp(grec, 0x4cu * cap))[q] = (uint8_t)rnd();
+    for (int q = 0; q < cap; q++) {
+        ((UnitRec *)gp(grec, 0x4cu * cap))[q].phone = rndi(0, np - 1);
+        ((int16_t *)gp(gids, 2u * cap))[q] = (int16_t)rnd();
+        ((int16_t *)gp(gsen, 2u * cap))[q] = (int16_t)rnd();
+    }
+    u->recs = grec; u->ids = gids; u->senones = gsen; u->cap = cap;
+    u->senone_base = nb;
+    u->sil_phone = rndi(0, 3);
+    u->tree = gt; u->tree_mode = 1;
+    u->phone_names = tr->phones;
+    u->lattice = grules;
+    uint32_t gbounds = galloc(2u * m + 16);
+    for (int q = 0; q < 2 * m + 16; q++) ((uint8_t *)gp(gbounds, 2u * m + 16))[q] = (uint8_t)(rnd() % 3 == 0);
+    uint32_t gio = galloc(8);
+    wr32(C, gio, gph); wr32(C, gio + 4, (uint32_t)n);
+    HeapSnap h0; heap_snap(&h0);
+    uint32_t a[5] = { gio, gio + 4, (uint32_t)m, gva, gbounds };
+    emu_set_insn_budget(E, 20000000);
+    uint32_t r1 = thiscall(0x63685d72, gu, 5, a);
+    emu_set_insn_budget(E, 0);
+    if (emu_failed(E)) { fprintf(stderr, "lattice apply case %d: the original did not finish\n", iter); exit(1); }
+    HeapSnap h1; heap_snap(&h1);
+    heap_restore(&h0);
+    uint32_t r2 = (uint32_t)unit_lattice_apply(u, gp(gio, 4), gp(gio + 4, 4), m, va, gp(gbounds, 1));
+    check("unit_lattice_apply", iter, "result", &r1, &r2, 4);
+    heap_check("unit_lattice_apply", iter, &h1);
+    free(h0.mem); free(h1.mem);
 }
 
 // unit_prosody_a on random phrases: every field it reads, random; the unit array and the stage compared
@@ -771,7 +894,7 @@ static void t_misc(int iter) {
     int32_t o2[2];
     int32_t last_first; memcpy(&last_first, gp(rd32(C, gt + 4u * (ne - 1)), 4), 4);
     if (xx - last_first < 20) {   // (keep inside the entry's 20 values)
-        uint32_t s2 = (uint32_t)unit_span_lookup(xx, ne - 1, gp(gt, 4), &o2[0], &o2[1]);
+        uint32_t s2 = decomp_g(unit_span_lookup(xx, ne - 1, gp(gt, 4), (uint32_t *)&o2[0], &o2[1]));
         check("unit_span_lookup", iter, "EAX", &s1, &s2, 4);
         check("unit_span_lookup", iter, "outputs", o1, o2, 8);
     }
@@ -2225,6 +2348,7 @@ int main(int argc, char **argv) {
         t_effect(it);
         t_tags(it);
         t_senone(it);
+        t_latapply(it);
         t_prosody(it);
         t_tapes(it);
         t_rate(it);
@@ -2254,6 +2378,6 @@ int main(int argc, char **argv) {
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
-    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d, texts split %d (%d into several sentences, %d skipped), reader runs %d with %d events, %d with user lexicon words; results -3..7: %d %d %d %d %d %d %d %d %d %d %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed, split_runs, split_multi, split_skipped, reader_runs, reader_events, reader_lex, reader_rc[1], reader_rc[2], reader_rc[3], reader_rc[4], reader_rc[5], reader_rc[6], reader_rc[7], reader_rc[8], reader_rc[9], reader_rc[10], reader_rc[11]);
+    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d, texts split %d (%d into several sentences, %d skipped), reader runs %d with %d events, %d with user lexicon words; results -3..7: %d %d %d %d %d %d %d %d %d %d %d; lattice rule runs %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed, split_runs, split_multi, split_skipped, reader_runs, reader_events, reader_lex, reader_rc[1], reader_rc[2], reader_rc[3], reader_rc[4], reader_rc[5], reader_rc[6], reader_rc[7], reader_rc[8], reader_rc[9], reader_rc[10], reader_rc[11], lat_runs);
     return fails ? 1 : 0;
 }

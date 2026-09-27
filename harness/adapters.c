@@ -351,7 +351,7 @@ void hk_lattice_match(Emu *e, X86 *c) {
                         GPH(int32_t, A(3), 4), AI(4), GPH(AltRules, A(5), 4), GPH(VecArray, A(6), sizeof(VecArray))));
 }
 void hk_unit_span_lookup(Emu *e, X86 *c) {
-    E_RET(unit_span_lookup(AI(0), AI(1), GPH(uint32_t, A(2), 4), GPH(int32_t, A(3), 4), GPH(int32_t, A(4), 4)));
+    E_RET(host_to_guest(unit_span_lookup(AI(0), AI(1), GPH(uint32_t, A(2), 4), GPH(uint32_t, A(3), 4), GPH(int32_t, A(4), 4))));
 }
 void hk_unit_lattice(Emu *e, X86 *c) { E_RET(unit_lattice(THIS(UnitStage), GPH(uint32_t, A(0), 4), GPH(int32_t, A(1), 4))); }
 
