@@ -30,16 +30,16 @@ __attribute__((unused)) static uint32_t guest_thiscall(uint32_t pref, const void
     return guest_call(pref, nargs, args);
 }
 
-int32_t unit_lattice(UnitStage *u, GPTR(PhoneIn) *ph, int32_t *n) {
+int32_t unit_lattice_apply(UnitStage *u, GPTR(PhoneIn) *ph, int32_t *n, int32_t m, VecArray *va, uint8_t *bounds) {
     X86 *c = emu_cpu(decomp_emu);
     uint32_t sp = c->s.r[ESP];
     c->s.r[ESP] = (sp - 16u) & ~15u;
     uint32_t g = c->s.r[ESP];
     memcpy(decomp_guest_mem + g, ph, 4);
     memcpy(decomp_guest_mem + g + 4, n, 4);
-    uint32_t args[2] = { g, g + 4 };
+    uint32_t args[5] = { g, g + 4, (uint32_t)m, host_to_guest_ptr(va), host_to_guest_ptr(bounds) };
     c->s.r[ECX] = host_to_guest_ptr(u);
-    int32_t r = (int32_t)guest_call(0x63686614, 2, args);
+    int32_t r = (int32_t)guest_call(0x63685d72, 5, args);
     memcpy(ph, decomp_guest_mem + g, 4);
     memcpy(n, decomp_guest_mem + g + 4, 4);
     c->s.r[ESP] = sp;

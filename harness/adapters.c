@@ -312,3 +312,12 @@ void hk_vecarray_append(Emu *e, X86 *c) { E_RET(vecarray_append(THIS(VecArray), 
 void hk_lattice_cost(Emu *e, X86 *c) { x86_fpu_push(c, lattice_cost(AI(0), AI(1))); }
 void hk_array_lacks(Emu *e, X86 *c) { int32_t n = AI(1); E_RET(array_lacks((int16_t)A(0), n, n > 0 ? GPH(int16_t, A(2), 2u * n) : NULL)); }
 void hk_lattice_viterbi(Emu *e, X86 *c) { E_RET(lattice_viterbi(THIS(VecArray), A(0))); }
+
+void hk_lattice_match(Emu *e, X86 *c) {
+    E_RET(lattice_match((const char *)x86_ptr(c, A(0), 1), (const int16_t *)(void *)(c->mem + A(1)), AI(2),
+                        GPH(int32_t, A(3), 4), AI(4), GPH(AltRules, A(5), 4), GPH(VecArray, A(6), sizeof(VecArray))));
+}
+void hk_unit_span_lookup(Emu *e, X86 *c) {
+    E_RET(unit_span_lookup(AI(0), AI(1), GPH(uint32_t, A(2), 4), GPH(int32_t, A(3), 4), GPH(int32_t, A(4), 4)));
+}
+void hk_unit_lattice(Emu *e, X86 *c) { E_RET(unit_lattice(THIS(UnitStage), GPH(uint32_t, A(0), 4), GPH(int32_t, A(1), 4))); }

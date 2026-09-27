@@ -71,7 +71,7 @@ typedef struct UnitStage {
     uint32_t rate_flags;       // 0x2bc bit 1: scale by the alternative default rate
     int32_t rate_mode;         // 0x2c0 0: default rate; otherwise see rate_flags
     uint32_t alt_rate;         // 0x2c4
-    int32_t lattice;           // 0x2c8 alternative-unit search on
+    GPTR(const struct AltRules) lattice;   // 0x2c8 alternative-unit rules (NULL: search off)
     uint8_t cs[24];            // 0x2cc CRITICAL_SECTION guarding `_000` (the abort flag)
     uint32_t ev_stop;          // 0x2e4
     uint32_t ev_done;          // 0x2e8
@@ -79,8 +79,32 @@ typedef struct UnitStage {
     GPTR(struct Queue) out;    // 0x2f0
 } UnitStage;
 
-// @0x63686614 thiscall (not decompiled yet): the alternative-unit search; may replace the phrase and its
-// length; returns the number of units
+// the alternative-unit rules (one bucket per first phone byte): a rule matches a phone string, with
+// optional left/right context sets of senones, and proposes a unit id for each covered phone
+typedef struct AltBucket {
+    int32_t first_id;          // 0x00 unit ids of this bucket start here (+ index + 1)
+    int32_t count;             // 0x04 rules
+    GPTR(const uint8_t) flags; // 0x08 per rule: 1 no left context, 2 keep the last phone, 0xc context
+    GPTR(GPTR(const char)) keys;      // 0x0c the phone-index string each rule matches
+    GPTR(const uint8_t) nleft; // 0x10
+    GPTR(const uint8_t) nright;// 0x14
+    GPTR(GPTR(const int16_t)) left;   // 0x18 context senone sets
+    GPTR(GPTR(const int16_t)) right;  // 0x1c
+} AltBucket;
+typedef struct AltRules { GPTR(const AltBucket) bucket[256]; } AltRules;
+// @0x63685c20 stdcall: the next rule of key[0]'s bucket at or after *pos that matches key (and the
+// senone context around position i); its unit id is proposed for the covered positions. 1 = found
+// (*pos after it), 0 = no more.
+int lattice_match(const char *key, const int16_t *sen, int32_t n_rest, int32_t *pos, int32_t i,
+                  const AltRules *rules, VecArray *va);
+// @0x63685d18 stdcall: the table entry holding unit x (entries sorted by first id); returns its 0x24
+// value and stores the 0x28 and 0x20 values
+int32_t unit_span_lookup(int32_t x, int32_t n, GPTR(const void) *table, int32_t *out28, int32_t *out20);
+// @0x63685d72 thiscall (not decompiled yet): rewrite the phrase with the chosen units
+int32_t unit_lattice_apply(UnitStage *u, GPTR(PhoneIn) *ph, int32_t *n, int32_t m, VecArray *va,
+                           uint8_t *bounds);
+// @0x63686614 thiscall: the alternative-unit search (on when `lattice`): may rewrite the phrase and
+// its length; returns the number of units
 int32_t unit_lattice(UnitStage *u, GPTR(PhoneIn) *ph, int32_t *n);
 // @0x6368571f thiscall: hand a phrase's units to the synthesizer queue (as 20-byte blob records),
 // waiting for room; dropped if the stage is aborted or stopped

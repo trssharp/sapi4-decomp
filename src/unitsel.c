@@ -629,3 +629,90 @@ int32_t unit_thread_loop(UnitStage *u) {
     vc_SetEvent(u->ev_done);
     return 0;
 }
+
+LAYOUT(AltBucket, right, 0x1c);
+
+int lattice_match(const char *key, const int16_t *sen, int32_t n_rest, int32_t *pos, int32_t i,
+                  const AltRules *rules, VecArray *va) {
+    (void)n_rest;
+    const AltBucket *b = GP(const AltBucket, rules->bucket[(signed char)key[0]]);   // (a signed index, as the original)
+    for (int32_t r = *pos; r < b->count; r++) {
+        int32_t len;
+        if (prefix_cmp(key, GP(const char, GP(GPTR(const char), b->keys)[r]), &len) != 0) continue;
+        uint8_t fl = GP(const uint8_t, b->flags)[r];
+        if (fl & 0xc) {
+            if (array_lacks(sen[i], GP(const uint8_t, b->nleft)[r], GP(const int16_t, GP(GPTR(const int16_t), b->left)[r])))
+                continue;
+            if (array_lacks(sen[len + i], GP(const uint8_t, b->nright)[r], GP(const int16_t, GP(GPTR(const int16_t), b->right)[r])))
+                continue;
+        }
+        int32_t k = (fl & 1) ? 0 : 1;
+        int32_t l2 = (int32_t)strlen(GP(const char, GP(GPTR(const char), b->keys)[r]));
+        if (!(fl & 2)) l2--;
+        for (; k < l2; k++) vecarray_append(va, i + k, b->first_id + r + 1);
+        *pos = r + 1;
+        return 1;
+    }
+    return 0;
+}
+
+typedef struct SpanEntry { int32_t first; uint8_t _04[0x1c]; GPTR(const int16_t) f20; GPTR(const int32_t) f24; GPTR(const int32_t) f28; } SpanEntry;
+LAYOUT(SpanEntry, f28, 0x28);
+int32_t unit_span_lookup(int32_t x, int32_t n, GPTR(const void) *table, int32_t *out28, int32_t *out20) {
+    int32_t i = 0;
+    while (i < n && x >= GP(const SpanEntry, table[i + 1])->first) i++;
+    const SpanEntry *e = GP(const SpanEntry, table[i]);
+    int32_t k = x - e->first;
+    *out28 = GP(const int32_t, e->f28)[k];
+    *out20 = GP(const int16_t, e->f20)[k];
+    return GP(const int32_t, e->f24)[k];
+}
+
+int32_t unit_lattice(UnitStage *u, GPTR(PhoneIn) *ph, int32_t *n) {
+    int32_t result;
+    VecArray *va = NULL;
+    uint8_t *ids8 = vc_calloc(1, (size_t)(uint32_t)*n);
+    uint8_t *bounds = vc_calloc((size_t)(uint32_t)*n, 1);
+    if (!ids8 || !bounds) {
+        // (the original returns an uninitialised local here)
+        result = 0;
+        goto done;
+    }
+    int32_t m = 0;
+    uint8_t *bp = bounds;
+    const PhoneIn *p = GP(const PhoneIn, *ph);
+    for (int32_t i = 0; i < *n; i++) {
+        char c = p[i].name[0];
+        if (c == '#' || c == '\\') *bp = 1;
+        else {
+            ids8[bp - bounds] = (uint8_t)GP(int16_t, u->ids)[m];
+            m++;
+            bp++;
+        }
+    }
+    if (!u->lattice || !m) {
+        vc_free(ids8);
+        vc_free(bounds);
+        return m;
+    }
+    result = m;
+    VecArray *v = vc_malloc(0x14);
+    va = v ? vecarray_ctor(v) : NULL;
+    vecarray_init(va, m, 10, -1);
+    for (int32_t i = 0; i < m; i++) {
+        int32_t pos = 0;
+        while (lattice_match((const char *)ids8 + i, GP(int16_t, u->senones) + i, m - i, &pos, i,
+                             GP(const AltRules, u->lattice), va))
+            ;
+    }
+    lattice_viterbi(va, DLLCODE(0x63685d00));
+    result = unit_lattice_apply(u, ph, n, result, va, bounds);
+done:
+    if (ids8) vc_free(ids8);
+    if (bounds) vc_free(bounds);
+    if (va) {
+        vecarray_destroy(va);
+        vc_free(va);
+    }
+    return result;
+}
