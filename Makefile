@@ -50,3 +50,8 @@ unit: build/unit
 hookdiff: build/sapi4_speak
 	./tools/hookdiff.sh
 .PHONY: hookdiff
+
+# src/ must also compile as the portable build (real pointers, no emulator)
+portable-check:
+	$(CC) -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror -fsyntax-only src/*.c
+.PHONY: portable-check

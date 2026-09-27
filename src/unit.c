@@ -21,7 +21,7 @@ VocUnit *voc_unit_decode(int index, const VocVoice *v, VocSynthState *s) {
     if (index < 0 || v->fft_n > 0x200) return NULL;
     VocUnit *u = vc_malloc(0x20);
     if (!u) return NULL;
-    const uint8_t *p = GP(const uint8_t, GP(const uint32_t, v->units)[index]);
+    const uint8_t *p = GP(const uint8_t, GP(GPTR(const uint8_t), v->units)[index]);
     int32_t nframes;
     memcpy(&nframes, p, 4);
     p += 4;
@@ -36,7 +36,7 @@ VocUnit *voc_unit_decode(int index, const VocVoice *v, VocSynthState *s) {
     for (int f = 0; f < nframes; f++) {
         float *o = lsf;
         for (int i = 0; i < v->n_lsf; i++) {
-            const Codebook *cb = GP(const Codebook, GP(const uint32_t, v->lsf)[i]);
+            const Codebook *cb = GP(const Codebook, GP(GPTR(const Codebook), v->lsf)[i]);
             int dim = cb->dim;
             uint8_t idx = *p++;
             const float *src = GP(const float, cb->data) + idx * dim;
@@ -54,6 +54,7 @@ VocUnit *voc_unit_decode(int index, const VocVoice *v, VocSynthState *s) {
     float *pos = vc_malloc((size_t)(uint32_t)(u->total * 4));
     GPSET(u->exc, pos);
     int spec_set = 0;
+    (void)spec_set;
     for (int f = 0; f < nframes; f++) {
         int n = x87_ftol(x87_abs_cmp0(periods[f]));
         if ((double)periods[f] > 0.0 && !(s->flags & 1)) {
@@ -63,7 +64,7 @@ VocUnit *voc_unit_decode(int index, const VocVoice *v, VocSynthState *s) {
                 if (!spec_set) decomp_warn("voc_unit_decode: delta frame before any voiced frame (the original reads stale stack)");
 #endif
                 for (int b = 0; b < v->n_dexc; b++) {
-                    const Codebook *cb = GP(const Codebook, GP(const uint32_t, v->dexc)[b]);
+                    const Codebook *cb = GP(const Codebook, GP(GPTR(const Codebook), v->dexc)[b]);
                     int half = cb->dim / 2;
                     uint8_t idx = *p++;
                     dsp_add_halves(spec, GP(const float, cb->data) + idx * cb->dim, bin, half, v->fft_n);
@@ -72,7 +73,7 @@ VocUnit *voc_unit_decode(int index, const VocVoice *v, VocSynthState *s) {
             } else {
                 if (v->fft_n > 0) memset(spec, 0, (size_t)v->fft_n * 4);
                 for (int b = 0; b < v->n_exc; b++) {
-                    const Codebook *cb = GP(const Codebook, GP(const uint32_t, v->exc)[b]);
+                    const Codebook *cb = GP(const Codebook, GP(GPTR(const Codebook), v->exc)[b]);
                     int half = cb->dim / 2;
                     uint8_t idx = *p++;
                     dsp_place_halves(spec, GP(const float, cb->data) + idx * cb->dim, bin, half, v->fft_n);

@@ -28,6 +28,18 @@ typedef struct VocVoice {
     GPTR(const int8_t) noise;  // 0x3c noise table
 } VocVoice;
 
+// one decoded unit (malloc'd, 0x20 bytes)
+typedef struct VocUnit {
+    int32_t nframes;        // 0x00
+    int32_t total;          // 0x04 excitation samples (sum of |period|)
+    int32_t order;          // 0x08
+    GPTR(float) periods;    // 0x0c per frame: > 0 voiced period, <= 0 unvoiced length
+    GPTR(float) lpc;        // 0x10 nframes * (order + 1)
+    GPTR(float) exc;        // 0x14 total
+    GPTR(float) gains;      // 0x18 nframes
+    int32_t _1c;            // 0x1c set to 0
+} VocUnit;
+
 struct Effect;
 // the synthesizer object (C++ in the original)
 typedef struct VocSynthState {
@@ -59,18 +71,6 @@ typedef struct VocRequest {
     GPTR(const float) gains;  // 0x18 [npoints]
     int32_t produced;       // 0x1c samples written to out
 } VocRequest;
-
-// one decoded unit (malloc'd, 0x20 bytes)
-typedef struct VocUnit {
-    int32_t nframes;        // 0x00
-    int32_t total;          // 0x04 excitation samples (sum of |period|)
-    int32_t order;          // 0x08
-    GPTR(float) periods;    // 0x0c per frame: > 0 voiced period, <= 0 unvoiced length
-    GPTR(float) lpc;        // 0x10 nframes * (order + 1)
-    GPTR(float) exc;        // 0x14 total
-    GPTR(float) gains;      // 0x18 nframes
-    int32_t _1c;            // 0x1c set to 0
-} VocUnit;
 
 // @0x636719fa stdcall: decode unit `index`: periods, LSF frames -> LPC, gains, and the excitation -
 // voiced periods from codebook spectra (delta-coded against the previous voiced frame) through the

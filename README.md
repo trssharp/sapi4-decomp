@@ -23,7 +23,9 @@ the original keeps running around it.
 make                 # build/sapi4_speak, with every hook in harness/hooklist.h enabled
 make check           # tetyys.com references, bit-identical
 make golden          # 46 renders over all 19 modes against tools/golden_hashes.txt
-make unit            # each decompiled function vs the original on random inputs
+make unit            # each decompiled function vs the original on random inputs (heap too)
+make hookdiff        # 171 renders (19 modes x 9 texts x 2 warm utterances), hooks vs the original
+make portable-check  # src/ type-checks as the portable build (no emulator, real pointers)
 SAPI4_HOOKS=none|all|a,b|-a,-b  build/sapi4_speak ...     # choose hooks (bisecting)
 SAPI4_HOOK_STATS=1   build/sapi4_speak ...                # how often each hook ran
 ```
