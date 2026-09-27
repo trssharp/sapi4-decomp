@@ -17,6 +17,10 @@ DLL keeps running around it) and must leave the output bit-identical:
 
 All three pass with every hook enabled. `SAPI4_HOOKS=none` gives the untouched original.
 
+The portable build (no emulator) is checked against the same originals: `make port-render-check`
+(38 golden renders, bit for bit), `make port-fe-check` (phone lists), `make port-lex-check` (the main
+lexicon), each also with the DLL's data baked in (`-baked-check`).
+
 ## Where this stands (end of session 5, 2026-09-27)
 
 Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`):
