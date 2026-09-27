@@ -120,3 +120,18 @@ port-render-baked-check: build/port_render_baked
 port-tags-check: build/port_render build/sapi4_speak
 	@./tools/port_tags_check.sh
 .PHONY: port-tags-check
+
+# fully baked: the DLL's data and the voice files compiled in (generated sources, never committed); checked
+# against the golden renders with no voice directory at all
+build/mkvoices: port/mkvoices.c
+	@mkdir -p build
+	$(PORTCC) -o $@ port/mkvoices.c
+build/voicedata_gen.c: build/mkvoices $(wildcard data/msttsl/*.vce) $(wildcard data/msttsl/*.cfg)
+	./build/mkvoices data/msttsl > $@
+build/voicedata_gen.o: build/voicedata_gen.c src/crt_vc.h
+	$(PORTCC) -O0 -c -o $@ build/voicedata_gen.c
+build/port_render_full: port/render.c port/dllimage.c port/dllimage.h build/dlldata_gen.c build/voicedata_gen.o $(PORTALL) $(wildcard src/*.h)
+	$(PORTCC) -DDLL_BAKED -DVOICES_BAKED -o $@ port/render.c port/dllimage.c build/dlldata_gen.c build/voicedata_gen.o $(PORTALL) -lm
+port-render-full-check: build/port_render_full
+	@./tools/port_render_check.sh build/port_render_full /nonexistent/voices
+.PHONY: port-render-full-check

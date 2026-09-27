@@ -80,6 +80,13 @@ int32_t vc_stm_seek(void *stm, int32_t move, uint32_t origin, uint32_t *pos);
 // 0x2c). A portable build lists the directory with the names sorted case-insensitively, as the emulator
 // (and NTFS) return them.
 uint32_t vc_FindFirstFileA(const char *pattern, void *data);
+#ifndef DECOMP_HOOK
+// portable build: files compiled into the program (a voice-baked build). Once set, the engine's
+// directory listings and storage opens use this table instead of the disk; a path's directory part is
+// ignored, names compare case-insensitively.
+typedef struct VcFile { const char *name; const uint8_t *data; uint32_t size; } VcFile;
+void vc_files_use(const VcFile *files, int n);
+#endif
 int32_t vc_FindNextFileA(uint32_t h, void *data);
 int32_t vc_FindClose(uint32_t h);
 // OLE32 CoInitialize(NULL) / CoUninitialize (nothing to do in a portable build)

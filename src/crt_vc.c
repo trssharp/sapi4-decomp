@@ -100,6 +100,7 @@ uint32_t vc_GetCurrentThread(void) { return 0xfffffffeu; }
 // storage objects of the portable build: a storage (a compound file's root) or a stream (its bytes)
 #include "cfb.h"
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <ctype.h>
 typedef struct VcObj { int kind; int refs; Cfb *f; uint32_t dir; uint8_t *data; size_t len, pos; } VcObj;
@@ -157,12 +158,23 @@ int32_t vc_stm_seek(void *stm, int32_t move, uint32_t origin, uint32_t *pos) {
     if (pos) *pos = (uint32_t)np;
     return 0;
 }
+static const VcFile *vc_files;
+static int vc_nfiles;
+void vc_files_use(const VcFile *files, int n) { vc_files = files; vc_nfiles = n; }
 int32_t vc_StgOpenStorage(const uint16_t *path, uint32_t mode, void **stg) {
     (void)mode;
     char p[1024];
     size_t k = 0;
     for (; path[k] && k < sizeof p - 1; k++) p[k] = path[k] == '\\' ? '/' : (char)path[k];
     p[k] = 0;
+    if (vc_files) {
+        const char *base = strrchr(p, '/');
+        base = base ? base + 1 : p;
+        *stg = NULL;
+        for (int i = 0; i < vc_nfiles; i++)
+            if (!strcasecmp(vc_files[i].name, base)) *stg = vc_stg_open_mem(vc_files[i].data, vc_files[i].size);
+        return *stg ? 0 : (int32_t)0x80030002u;
+    }
     *stg = vc_stg_open_file(p);
     return *stg ? 0 : (int32_t)0x80030002u;
 }
@@ -190,16 +202,25 @@ uint32_t vc_FindFirstFileA(const char *pattern, void *data) {
     for (char *q = dir; *q; q++) if (*q == '\\') *q = '/';
     int slot = 0;
     while (slot < 8 && vc_finds[slot].names) slot++;
-    DIR *d = opendir(dir);
-    if (slot == 8 || !d) { if (d) closedir(d); return 0xffffffffu; }
+    if (slot == 8) return 0xffffffffu;
     VcFind *f = &vc_finds[slot];
-    struct dirent *de;
-    while ((de = readdir(d))) {
-        if (de->d_name[0] == '.' || !wild(pat, de->d_name)) continue;
-        f->names = realloc(f->names, sizeof(char *) * (size_t)(f->count + 1));
-        f->names[f->count++] = strdup(de->d_name);
+    if (vc_files) {
+        for (int i = 0; i < vc_nfiles; i++) {
+            if (!wild(pat, vc_files[i].name)) continue;
+            f->names = realloc(f->names, sizeof(char *) * (size_t)(f->count + 1));
+            f->names[f->count++] = strdup(vc_files[i].name);
+        }
+    } else {
+        DIR *d = opendir(dir);
+        if (!d) return 0xffffffffu;
+        struct dirent *de;
+        while ((de = readdir(d))) {
+            if (de->d_name[0] == '.' || !wild(pat, de->d_name)) continue;
+            f->names = realloc(f->names, sizeof(char *) * (size_t)(f->count + 1));
+            f->names[f->count++] = strdup(de->d_name);
+        }
+        closedir(d);
     }
-    closedir(d);
     for (int i = 1; i < f->count; i++)
         for (int j = i; j > 0 && strcasecmp(f->names[j - 1], f->names[j]) > 0; j--) {
             char *t = f->names[j]; f->names[j] = f->names[j - 1]; f->names[j - 1] = t;

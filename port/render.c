@@ -22,6 +22,10 @@
 #ifdef DLL_BAKED
 extern const DllBlob dll_baked;
 #endif
+#ifdef VOICES_BAKED
+extern const VcFile voice_files[];
+extern const int voice_nfiles;
+#endif
 
 static jmp_buf idle_jmp;
 static void idle(void) { longjmp(idle_jmp, 1); }
@@ -81,6 +85,9 @@ int main(int argc, char **argv) {
         return 2;
     }
     const char *dir = argv[a++];
+#ifdef VOICES_BAKED
+    vc_files_use(voice_files, voice_nfiles);        // (the voices compiled in: `dir` names no real directory)
+#endif
 #ifndef DLL_BAKED
     char path[1024];
     snprintf(path, sizeof path, "%s/msttssyn.dll", dir);

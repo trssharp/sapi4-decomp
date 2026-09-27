@@ -5,6 +5,7 @@
 set -u
 cd "$(dirname "$0")/.."
 BIN=${1:-build/port_render}
+DIR=${2:-data/msttsl}     # (a voice-baked build is given a directory that does not exist)
 OUT=work/port_render
 rm -rf "$OUT" && mkdir -p "$OUT"
 T1="The quick brown fox jumps over the lazy dog, and then it runs away into the forest."
@@ -34,8 +35,8 @@ M
 n=0; fail=0
 while read -r mode; do
   slug=$(echo "$mode" | tr 'A-Z ' 'a-z_' | tr -d '()')
-  "$BIN" data/msttsl -m "$mode" -o "$OUT/${slug}_1.wav" "$T1" 2>/dev/null
-  "$BIN" data/msttsl -m "$mode" -o "$OUT/${slug}_2.wav" "$T2" 2>/dev/null
+  "$BIN" "$DIR" -m "$mode" -o "$OUT/${slug}_1.wav" "$T1" 2>/dev/null
+  "$BIN" "$DIR" -m "$mode" -o "$OUT/${slug}_2.wav" "$T2" 2>/dev/null
   for k in 1 2; do
     n=$((n + 1))
     want=$(grep " ${slug}_$k.wav\$" tools/golden_hashes.txt)
@@ -45,8 +46,8 @@ while read -r mode; do
 done < "$OUT/modes.txt"
 for mode in "Sam" "Mary in Hall" "Male Whisper" "Mike (for Telephone)"; do
   slug=$(echo "$mode" | tr 'A-Z ' 'a-z_' | tr -d '()')
-  "$BIN" data/msttsl -m "$mode" -s 300 -p 140 -o "$OUT/${slug}_fastpitch.wav" "$T1" 2>/dev/null
-  "$BIN" data/msttsl -m "$mode" -s 60 -p 60 -o "$OUT/${slug}_slowlow.wav" "$T1" 2>/dev/null
+  "$BIN" "$DIR" -m "$mode" -s 300 -p 140 -o "$OUT/${slug}_fastpitch.wav" "$T1" 2>/dev/null
+  "$BIN" "$DIR" -m "$mode" -s 60 -p 60 -o "$OUT/${slug}_slowlow.wav" "$T1" 2>/dev/null
   for k in fastpitch slowlow; do
     n=$((n + 1))
     want=$(grep " ${slug}_$k.wav\$" tools/golden_hashes.txt)
