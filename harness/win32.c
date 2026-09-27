@@ -50,3 +50,27 @@ uint32_t vc_com_release(void *p) {
     uint32_t fn = *(uint32_t *)(void *)(decomp_guest_mem + vt + 8);
     return emu_call(decomp_emu, fn, 1, &obj);
 }
+
+int32_t vc_CoCreateInstance(uint32_t clsid, uint32_t ctx, uint32_t iid, void **out) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - 16u) & ~15u;
+    uint32_t slot = c->s.r[ESP];
+    *(uint32_t *)(void *)(decomp_guest_mem + slot) = 0;
+    uint32_t a[5] = { clsid + decomp_load_delta, 0, ctx, iid + decomp_load_delta, slot };
+    int32_t r = (int32_t)api(0x6369e224, 5, a);
+    uint32_t o = *(uint32_t *)(void *)(decomp_guest_mem + slot);
+    c->s.r[ESP] = sp;
+    *out = o ? decomp_guest_mem + o : NULL;
+    return r;
+}
+int32_t vc_com_call(void *p, int slot, int nargs, const uint32_t *args) {
+    uint32_t obj = g(p), a[16];
+    uint32_t vt = *(uint32_t *)(void *)(decomp_guest_mem + obj);
+    uint32_t fn = *(uint32_t *)(void *)(decomp_guest_mem + vt + 4u * (uint32_t)slot);
+    a[0] = obj;
+    for (int i = 0; i < nargs && i < 15; i++) a[i + 1] = args[i];
+    return (int32_t)emu_call(decomp_emu, fn, nargs + 1, a);
+}
+int32_t vc_CoInitialize(void) { uint32_t a[1] = { 0 }; return (int32_t)api(0x6369e21c, 1, a); }
+void vc_CoUninitialize(void) { api(0x6369e220, 0, NULL); }

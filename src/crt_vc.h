@@ -44,3 +44,11 @@ int32_t vc_SetThreadPriority(uint32_t h, int32_t prio);
 void vc_DebugBreak(void);
 // IUnknown::Release on a COM object handed over by the SAPI layer (hook build: the guest object)
 uint32_t vc_com_release(void *obj);
+// OLE32 CoCreateInstance with a CLSID and IID in the DLL's data (by preferred-base address); *out the
+// object (0 on failure). A portable build has no COM classes: it always fails (REGDB_E_CLASSNOTREG).
+// OLE32 CoInitialize(NULL) / CoUninitialize (nothing to do in a portable build)
+int32_t vc_CoInitialize(void);
+void vc_CoUninitialize(void);
+int32_t vc_CoCreateInstance(uint32_t clsid, uint32_t ctx, uint32_t iid, void **out);
+// method `slot` of a COM object, with 32-bit arguments (pointers already as the object sees them)
+int32_t vc_com_call(void *obj, int slot, int nargs, const uint32_t *args);

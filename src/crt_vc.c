@@ -65,6 +65,17 @@ int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) {
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio) { (void)h; (void)prio; return 1; }
 void vc_DebugBreak(void) {}
 uint32_t vc_com_release(void *obj) { (void)obj; return 0; }
+int32_t vc_CoInitialize(void) { return 0; }
+void vc_CoUninitialize(void) {}
+int32_t vc_CoCreateInstance(uint32_t clsid, uint32_t ctx, uint32_t iid, void **out) {
+    (void)clsid; (void)ctx; (void)iid;
+    *out = NULL;
+    return (int32_t)0x80040154u;
+}
+int32_t vc_com_call(void *obj, int slot, int nargs, const uint32_t *args) {
+    (void)obj; (void)slot; (void)nargs; (void)args;
+    return (int32_t)0x80004005u;
+}
 static _Thread_local uint32_t vc_seed = 1;
 int vc_rand(void) {
     vc_seed = vc_seed * 214013u + 2531011u;

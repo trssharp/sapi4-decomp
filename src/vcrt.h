@@ -32,6 +32,8 @@ int vc_stricmp_n(const char *a, const char *b, size_t n);   // raw difference, u
 int vc_memcmp(const void *a, const void *b, size_t n);
 char *vc_strrev(char *s);           // _strrev
 int32_t vc_atoi(const char *s);
+// sscanf(s, "=%i", v) as the emulator's MSVCRT does it: 1 read, 0 not, -1 at the end of the text
+int vc_scan_eq_int(const char *s, int32_t *v);
 // bsearch as MSVCRT's (which element of equal ones it finds depends on the halving)
 const void *vc_bsearch(const void *key, const void *base, uint32_t num, uint32_t width,
                        int (*cmp)(const void *, const void *));

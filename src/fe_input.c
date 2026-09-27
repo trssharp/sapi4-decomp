@@ -16,6 +16,9 @@ LAYOUT(FrontEnd, words, 0x24);
 LAYOUT(FrontEnd, text, 0x34);
 LAYOUT(FrontEnd, addr_mode, 0x48);
 LAYOUT(FrontEnd, single_char, 0x88);
+LAYOUT(FrontEnd, abort_event, 0x70);
+LAYOUT(FrontEnd, queue, 0x7c);
+LAYOUT(FrontEnd, _8c, 0x8c);
 
 void fe_entries_clear(FrontEnd *fe) {
     while (fe->last >= 0) {
@@ -94,29 +97,6 @@ static int lex(char **p, char *buf, int n) {
     int t = tag_lex(&g, buf, n);
     *p = (char *)GP(const char, g);
     return t;
-}
-
-// sscanf(s, "=%i", v) as the emulator's MSVCRT does it (its only use)
-static int scan_eq_int(const char *s, int32_t *v) {
-    if (*s != '=') return 0;
-    s++;
-    while (vc_isspace((uint8_t)*s)) s++;
-    if (!*s) return -1;
-    char buf[1024];
-    int n = 0;
-    while (s[n] && n < 1023 && ((s[n] >= '0' && s[n] <= '9') || (s[n] >= 'a' && s[n] <= 'f') ||
-                                (s[n] >= 'A' && s[n] <= 'F') || (n == 0 && (s[n] == '-' || s[n] == '+')) ||
-                                s[n] == 'x' || s[n] == 'X')) {
-        buf[n] = s[n];
-        n++;
-    }
-    buf[n] = 0;
-    if (!n) return 0;
-    char *end;
-    long long r = strtoll(buf, &end, 0);
-    if (end == buf) return 0;
-    *v = (int32_t)(uint32_t)(unsigned long long)r;
-    return 1;
 }
 
 #define ESC_N DLLVAR(const char, 0x6371f194)        // "\x1bN%d "
@@ -273,7 +253,7 @@ int32_t fe_tags_to_escapes(FrontEnd *fe, int32_t tags, int32_t mode, char *text,
                 str_append(&cur, buf);
                 pending = 0;
             }
-            if (scan_eq_int(p, &mark) != 1) {
+            if (vc_scan_eq_int(p, &mark) != 1) {
                 char *b = strchr(p, '\\');
                 p = b ? b + 1 : end;
                 goto next;

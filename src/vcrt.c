@@ -164,3 +164,26 @@ const void *vc_bsearch(const void *key, const void *base, uint32_t num, uint32_t
     }
     return NULL;
 }
+
+int vc_scan_eq_int(const char *s, int32_t *v) {
+    if (*s != '=') return 0;
+    s++;
+    while (vc_isspace((uint8_t)*s)) s++;
+    if (!*s) return -1;
+    char buf[1024];
+    int n = 0;
+    while (s[n] && n < 1023 && ((s[n] >= '0' && s[n] <= '9') || (s[n] >= 'a' && s[n] <= 'f') ||
+                                (s[n] >= 'A' && s[n] <= 'F') || (n == 0 && (s[n] == '-' || s[n] == '+')) ||
+                                s[n] == 'x' || s[n] == 'X')) {
+        buf[n] = s[n];
+        n++;
+    }
+    buf[n] = 0;
+    if (!n) return 0;
+    char *end;
+    long long r = strtoll(buf, &end, 0);
+    if (end == buf) return 0;
+    *v = (int32_t)(uint32_t)(unsigned long long)r;
+    return 1;
+}
+

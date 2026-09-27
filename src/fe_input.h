@@ -35,11 +35,16 @@ typedef struct FrontEnd {
     int32_t addr_mode;      // 0x48 2 inside an address tag
     int32_t voice;          // 0x4c
     int32_t f50;            // 0x50 < 0: a voice variant to check (negated)
-    uint32_t _54[10];
-    GPTR(uint8_t) queue;    // 0x7c the output queue (queue.h)
+    int32_t in_tp;          // 0x54 inside a "\Tp" tag's text (its phones replaced)
+    uint32_t _58[6];
+    uint32_t abort_event;   // 0x70 set: drop what is being spoken
+    uint32_t done_event;    // 0x74 set when the thread ends
+    GPTR(uint8_t) queue_in; // 0x78 the text queue (queue.h)
+    GPTR(uint8_t) queue;    // 0x7c the output queue
     int32_t pitch;          // 0x80
     int32_t pitch_set;      // 0x84
     int32_t single_char;    // 0x88 the text was one character (spoken as its name)
+    int32_t _8c;            // 0x8c
 } FrontEnd;
 
 void fe_entries_clear(FrontEnd *fe);                                    // @0x636803e4 thiscall
@@ -68,6 +73,11 @@ int32_t free_if2(void *p);                                              // @0x63
 // the end of the text), or 0x70 when the part held only escapes
 int32_t fe_after_feed(FrontEnd *fe, int32_t r);
 int32_t fe_continue(FrontEnd *fe);                                      // @0x63680c3f thiscall
+int32_t fe_set_pitch_level(FrontEnd *fe, uint16_t v);                   // @0x636836b8 thiscall
+// @0x636837a4 thiscall: a phrase of n phones into the phone list for the unit stage, index escapes back
+// into tag records, "\Tp" pronunciations through the phone converter; queued
+int32_t fe_phrase_out(FrontEnd *fe, int32_t n);
+int32_t fe_thread(FrontEnd *fe);                                        // @0x63684233 thiscall
 int32_t tag_char_value(const char *name);                               // @0x63680ecd stdcall
 void fe_voice_flags(FrontEnd *fe, int32_t v);                           // @0x63683653 thiscall
 int32_t fe_text_end(FrontEnd *fe);                                      // @0x63683765 thiscall

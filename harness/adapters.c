@@ -683,3 +683,6 @@ void hk_phones_build(Emu *e, X86 *c) { E_RET((uint32_t)phones_build(AI(0), A(1) 
 void hk_words_abort(Emu *e, X86 *c) { words_abort(AI(0)); }
 void hk_str_dup0(Emu *e, X86 *c) { E_RET(host_to_guest(str_dup0(GSTR(A(0))))); }
 void hk_calloc_n(Emu *e, X86 *c) { E_RET(host_to_guest(calloc_n(A(0), A(1)))); }
+void hk_fe_set_pitch_level(Emu *e, X86 *c) { E_RET((uint32_t)fe_set_pitch_level(THIS(FrontEnd), (uint16_t)A(0))); }
+void hk_fe_phrase_out(Emu *e, X86 *c) { E_RET((uint32_t)fe_phrase_out(THIS(FrontEnd), AI(0))); }
+void hk_fe_thread(Emu *e, X86 *c) { E_RET((uint32_t)fe_thread(THIS(FrontEnd))); }
