@@ -4,6 +4,7 @@
 #include "fe_lex.h"
 #include "fe_word.h"
 #include "fe_phrase.h"
+#include "fe_output.h"
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -509,3 +510,12 @@ void hk_ph_target(Emu *e, X86 *c) { ph_target(AI(0), AI(1)); E_RET(c->s.r[EAX]);
 void hk_ph_insert_tag(Emu *e, X86 *c) { ph_insert_tag(AI(0), AI(1)); E_RET(c->s.r[EAX]); }
 void hk_ph_pitch(Emu *e, X86 *c) { ph_pitch(GPH(uint8_t, A(0), 0xb600), AI(1), AI(2)); E_RET(c->s.r[EAX]); }
 void hk_ph_run(Emu *e, X86 *c) { E_RET((uint32_t)ph_run(GPH(uint8_t, A(0), 0xb600))); }
+void hk_fe_c_run(Emu *e, X86 *c) { E_RET((uint32_t)fe_c_run(GPH(uint8_t, A(0), 0xb600))); }
+void hk_fe_b_run(Emu *e, X86 *c) { E_RET((uint32_t)fe_b_run(GPH(uint8_t, A(0), 0xb600))); }
+void hk_fe_prepare(Emu *e, X86 *c) { E_RET((uint32_t)fe_prepare(GPH(uint8_t, A(0), 0xb600))); }
+void hk_fe_word_prepare(Emu *e, X86 *c) { E_RET((uint32_t)fe_word_prepare(AI(0))); }
+void hk_fe_word_format(Emu *e, X86 *c) { E_RET((uint32_t)fe_word_format(AI(0), GPH(uint32_t, A(1), 4))); }
+void hk_fe_event_count(Emu *e, X86 *c) { E_RET((uint32_t)fe_event_count(A(0) ? GPH(uint8_t, A(0), 0xb600) : NULL)); }
+void hk_fe_word_event_count(Emu *e, X86 *c) { E_RET((uint32_t)fe_word_event_count(AI(0))); }
+void hk_fe_events(Emu *e, X86 *c) { E_RET((uint32_t)fe_events(A(0) ? GPH(uint8_t, A(0), 0xb600) : NULL, GPH(int32_t, A(1), 4))); }
+void hk_fe_word_events(Emu *e, X86 *c) { E_RET((uint32_t)fe_word_events(AI(0), GPH(int32_t, A(1), 4))); }
