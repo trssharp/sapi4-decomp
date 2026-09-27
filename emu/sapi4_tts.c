@@ -409,6 +409,7 @@ int s4_list_modes(const char *dir, s4_mode *modes, int max, char *err, size_t er
 
 void s4_close(s4_engine *s) {
     if (!s) return;
+    decomp_report(s->e);
     emu_destroy(s->e);
     free(s);
 }

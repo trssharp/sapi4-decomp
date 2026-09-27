@@ -28,3 +28,6 @@ int decomp_install_hooks(Emu *e, uint32_t load_base, uint32_t pref_base);
 // guest address of a DLL global, relocated
 extern uint32_t decomp_load_delta;   // load base - preferred base
 #define GADDR(pref) ((uint32_t)(pref) + decomp_load_delta)
+
+// SAPI4_HOOK_STATS=1 (Mac builds): print how often each installed hook ran, to stderr
+void decomp_report(Emu *e);

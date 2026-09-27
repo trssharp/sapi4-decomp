@@ -234,7 +234,7 @@ def main():
         d = funcs[f]
         size = sum(d["code"].values())
         hi = max(a + s for a, s in d["code"].items()) if d["code"] else f
-        rows.append(dict(addr=f, size=size, end=hi, insns=len(d["code"]), callees=sorted(d["callees"]),
+        rows.append(dict(addr=f, size=size, end=hi, code=sorted(d["code"].items()), insns=len(d["code"]), callees=sorted(d["callees"]),
                          tails=sorted(d["tails"]), imports=sorted(d["imports"]), x87=d["x87"],
                          retpop=d["retpop"], indirect=d["indirect"], jumptables=d["jts"],
                          name=img.exports.get(f), shared_with=body_owner.get(f), unreferenced=f in gapseeds))

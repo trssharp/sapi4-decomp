@@ -6,7 +6,7 @@ CC ?= clang
 CFLAGS ?= -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -ffp-contract=off
 EMU = emu/x86.c emu/emu.c emu/crt.c emu/winapi.c emu/ole.c emu/registry.c emu/sapi4_tts.c
 DECOMP = $(wildcard src/*.c)
-HOOKS = harness/hooks.c harness/hooktab.c
+HOOKS = harness/hooks.c harness/hooktab.c harness/adapters.c
 HDR = $(wildcard emu/*.h) $(wildcard src/*.h) harness/hooks.h
 
 all: build/sapi4_speak
@@ -40,3 +40,8 @@ clean:
 build/sapi4_cover: $(EMU) $(DECOMP) $(HOOKS) emu/sapi4_speak.c $(HDR)
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DX86_COVER -DX86_PROFILE -Iemu -Isrc -Iharness -o $@ $(EMU) $(DECOMP) $(HOOKS) emu/sapi4_speak.c -lm
+
+# every decompiled function against the original in the emulator on random inputs
+unit: build/unit
+	./build/unit data/msttsl 2000
+.PHONY: unit

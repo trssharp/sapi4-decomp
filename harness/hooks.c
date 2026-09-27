@@ -40,3 +40,16 @@ int decomp_install_hooks(Emu *e, uint32_t load_base, uint32_t pref_base) {
 #endif
     return n;
 }
+
+void decomp_report(Emu *e) {
+#ifndef CV_NO_DEBUG_ENV
+    if (!getenv("SAPI4_HOOK_STATS")) return;
+    for (int i = 0; i < e->nhosts; i++)
+        for (int k = 0; k < decomp_nhooks; k++)
+            if (e->hosts[i].fn == decomp_hooks[k].fn)
+                fprintf(stderr, "hook %08x %-28s %llu calls\n", decomp_hooks[k].addr, decomp_hooks[k].name,
+                        (unsigned long long)e->hosts[i].calls);
+#else
+    (void)e;
+#endif
+}

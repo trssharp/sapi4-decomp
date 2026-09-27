@@ -1,1 +1,10 @@
-// HOOK(preferred-base address, C name, bytes popped on return)
+// HOOK(preferred-base address, C name, bytes popped on return). Sorted by address.
+HOOK(0x636712d5, dsp_allpole, 20)
+HOOK(0x63671943, dsp_fir, 20)
+HOOK(0x636719a0, dsp_iir_c0, 20)
+HOOK(0x63671e49, dsp_sum_abs, 8)
+HOOK(0x63671e79, dsp_scale, 12)
+HOOK(0x63671e96, dsp_reverse, 12)
+HOOK(0x63671ebc, dsp_to_pcm16, 12)
+HOOK(0x63671eee, dsp_to_pcm8, 12)
+HOOK(0x63671f31, dsp_max_abs, 8)
