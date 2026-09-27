@@ -78,7 +78,7 @@ void voc_resample_flush(uint32_t obj, uint32_t method) {
     guest_call(method, 0, NULL);
 }
 
-uint8_t vm_callback(int inst, uint8_t n, int16_t *left, int16_t *len) {
+uint8_t vm_proc_guest(int inst, uint8_t n, int16_t *left, int16_t *len) {
     static const uint32_t table[3] = { 0x63721cd0, 0x63721f30, 0x63721f80 };
     uint32_t fn = CODEADDR(DLLVAR(uint32_t, table[inst])[n]);
     uint32_t a[2] = { host_to_guest_ptr(left), host_to_guest_ptr(len) };

@@ -1146,6 +1146,25 @@ static void t_exec(int iter) {
     for (int q = 0; q < 3; q++) wr32(C, gaddr(cv->tapes) + 4u * q, save_t[q]);
 }
 
+// run an original that may not finish on random input: on the watchdog, put the CPU back and report 0
+static int skipped;
+static int call_bounded(uint32_t pref, int nargs, const uint32_t *args, uint32_t *ret) {
+    X86State st = C->s;
+    int stop = C->stop;
+    emu_set_insn_budget(E, 50000000);
+    *ret = call(pref, nargs, args);
+    emu_set_insn_budget(E, 0);
+    if (!E->failed) return 1;
+    if (!strstr(emu_error(E), "watchdog")) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); exit(1); }
+    C->s = st;
+    C->stop = stop;
+    C->faulted = 0;
+    E->failed = 0;
+    emu_clear_abort(E);
+    skipped++;
+    return 0;
+}
+
 // a rule set run over a random segment, with the real rules (and, to reach the rule types the rule data
 // never uses, rules whose type is patched in the emulator's copy of .rdata); everything the rules and
 // their procedures can write is compared: .data, the tapes, the heap
@@ -1170,12 +1189,14 @@ static void t_main(int iter) {
     uint8_t *b = gp(blk, 0x5000);
     for (int i = 0; i < 0x5000; i++) b[i] = (uint8_t)((rnd() % 3) ? rndi(0x41, 0x5a) : rndi(0x0f, 0xae));
     for (int i = 5; i < 0x585; i++) b[i] = (uint8_t)rndi(0, 2);
+    memset(b, 0, 5);
     for (int q = 0; q < 6; q++) {
         wr32(C, gaddr(vm->tape[q]), blk + toff[q]);
         if (q < 5) wr32(C, gaddr(tsel[k]) + 4u * (q + 1), blk + toff[q] - 1);
     }
     int16_t top = 0x501; memcpy(gp(gaddr(vm->top), 2), &top, 2);
     wr32(C, gaddr(run_vm[k].abort), 0);
+    if (k == 0) wr32(C, gaddr(0x63739274), blk);        // the word object the tapes are part of
     int32_t sidx = rndi(20, 80);
     uint32_t gpend = galloc(4);
     int16_t pend = (int16_t)(sidx + rndi(1, 30));
@@ -1197,10 +1218,14 @@ static void t_main(int iter) {
     uint8_t *d0 = malloc(dsize); memcpy(d0, gp(gaddr(dbase), dsize), dsize);
     HeapSnap h0; heap_snap(&h0);
     uint32_t a[3] = { (uint32_t)mode, (uint32_t)sidx, gpend };
-    emu_set_insn_budget(E, 200000000);
-    uint32_t r1 = call(fn[k], 3, a) & 0xff;
-    emu_set_insn_budget(E, 0);
-    if (E->failed) { fprintf(stderr, "vm_main case %d (instance %d, mode %d): the original did not finish (%s)\n", iter, k, mode, emu_error(E)); exit(1); }
+    uint32_t r1;
+    if (!call_bounded(fn[k], 3, a, &r1)) {
+        heap_restore(&h0); memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+        if (tp) *tp = tsave;
+        free(d0); free(h0.mem);
+        return;
+    }
+    r1 &= 0xff;
     HeapSnap h1; heap_snap(&h1);
     uint8_t *d1 = malloc(dsize); memcpy(d1, gp(gaddr(dbase), dsize), dsize);
     heap_restore(&h0);
@@ -1215,6 +1240,72 @@ static void t_main(int iter) {
     heap_check("vm_main", iter, &h1);
     main_runs++; main_applied += r1 != 0;
     if (tp) *tp = tsave;
+    free(d0); free(d1); free(h0.mem); free(h1.mem);
+}
+
+// the decompiled rule procedures (the wrappers run whole rule sets) against the originals
+static int proc_runs;
+static void t_proc(int iter) {
+    static const uint32_t tsel[3] = { 0x63739204, 0x637393dc, 0x637395bc };
+    static const uint32_t tabs[3] = { 0x63721cd0, 0x63721f30, 0x63721f80 };
+    static const uint32_t toff[6] = { 0x585, 0xb05, 0x1085, 0x1605, 0x438e, 5 };
+    int k = iter % 3, n;
+    uint32_t fnp;
+    for (;;) {
+        n = rndi(3, k == 2 ? 61 : 16);
+        fnp = rd32(C, gaddr(tabs[k]) + 4u * (uint32_t)n) - M->base + MSTTS_PREF_BASE;
+        extern int vm_proc_is_c(int inst, uint8_t n);
+        if (vm_proc_is_c(k, (uint8_t)n)) break;
+    }
+    const RuleVM *vm = &rule_vm[k];
+    uint32_t blk = galloc(0x5000);
+    uint8_t *b = gp(blk, 0x5000);
+    static const uint8_t spice[] = { 0x22, 0x27, 0x60, 0x47, 0x2d, 0x7e, 0x7e, 0x7e };
+    for (int i = 0; i < 0x5000; i++) b[i] = (uint8_t)((rnd() % 4) ? rndi(0x41, 0x5a) : (rnd() & 1) ? spice[rnd() % 8] : rndi(0x0f, 0xae));
+    for (int i = 5; i < 0x585; i++) b[i] = (uint8_t)rndi(0, 2);
+    memset(b, 0, 5);
+    for (int q = 0; q < 6; q++) {
+        wr32(C, gaddr(vm->tape[q]), blk + toff[q]);
+        if (q < 5) wr32(C, gaddr(tsel[k]) + 4u * (q + 1), blk + toff[q] - 1);
+    }
+    int16_t top = 0x501; memcpy(gp(gaddr(vm->top), 2), &top, 2);
+    wr32(C, gaddr(run_vm[k].abort), 0);
+    if (k == 0) wr32(C, gaddr(0x63739274), blk);        // the word object the tapes are part of
+    if (k == 0) wr32(C, gaddr(0x63738c98), rnd() & 1);
+    uint32_t gl = galloc(8);
+    int16_t left = (int16_t)rndi(20, 80), len = (int16_t)(left + rndi(-1, 30));
+    memcpy(gp(gl, 2), &left, 2); memcpy(gp(gl + 4, 2), &len, 2);
+    uint32_t sp = C->s.r[ESP];
+    memset(gp(sp - 0x8000, 0x8000), 0x5a, 0x8000);
+    const uint32_t dbase = 0x6371c000, dsize = 0x1e0b0;
+    uint8_t *d0 = malloc(dsize); memcpy(d0, gp(gaddr(dbase), dsize), dsize);
+    HeapSnap h0; heap_snap(&h0);
+    uint8_t blk0[0x5000]; memcpy(blk0, b, 0x5000);
+    uint32_t a[2] = { gl, gl + 4 };
+    uint32_t r1;
+    if (!call_bounded(fnp, 2, a, &r1)) {
+        heap_restore(&h0); memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+        free(d0); free(h0.mem);
+        return;
+    }
+    r1 &= 0xff;
+    HeapSnap h1; heap_snap(&h1);
+    uint8_t *d1 = malloc(dsize); memcpy(d1, gp(gaddr(dbase), dsize), dsize);
+    uint8_t blk1[0x5000]; memcpy(blk1, b, 0x5000);
+    uint8_t lr1[8]; memcpy(lr1, gp(gl, 8), 8);
+    heap_restore(&h0);
+    memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+    memcpy(b, blk0, 0x5000);
+    memcpy(gp(gl, 2), &left, 2); memcpy(gp(gl + 4, 2), &len, 2);
+    memset(gp(sp - 0x8000, 0x8000), 0x5a, 0x8000);
+    uint32_t r2 = vm_callback(k, (uint8_t)n, gp(gl, 2), gp(gl + 4, 2));
+    char what[40]; snprintf(what, sizeof what, "vm_proc %d/%d", k, n);
+    check(what, iter, "AL", &r1, &r2, 4);
+    check(what, iter, "tapes", blk1, b, 0x5000);
+    check(what, iter, "left/len", lr1, gp(gl, 8), 8);
+    check(what, iter, ".data", d1, gp(gaddr(dbase), dsize), dsize);
+    heap_check(what, iter, &h1);
+    proc_runs++;
     free(d0); free(d1); free(h0.mem); free(h1.mem);
 }
 
@@ -1252,10 +1343,11 @@ int main(int argc, char **argv) {
         t_apply(it);
         t_exec(it);
         if (it < 600) t_main(it);
+        if (it < 900) t_proc(it);
         if (it < 500) t_viterbi(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
-    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs);
+    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped);
     return fails ? 1 : 0;
 }

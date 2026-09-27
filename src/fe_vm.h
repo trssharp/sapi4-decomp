@@ -100,8 +100,12 @@ typedef struct RuleHdr {
 // (literals, variables, class maps, tape switches, filler), keeping the per-character counts
 // current. AL = success.
 uint8_t vm_apply(int inst, int32_t a0, RuleHdr *r);
-// the rule procedures (0xfe,n; n >= 3), called through the instance's table: AL = success
+// the rule procedures (0xfe,n; n >= 3) of the instance's table (fe_procs.c): AL = success
 uint8_t vm_callback(int inst, uint8_t n, int16_t *left, int16_t *len);
+// the same, with the EAX the original leaves (prev_eax: the caller's EAX, where the original keeps it)
+uint32_t vm_proc(int inst, uint8_t n, int16_t *left, int16_t *len, uint32_t prev_eax);
+// procedures not decompiled yet: run the original (harness/guest.c)
+uint8_t vm_proc_guest(int inst, uint8_t n, int16_t *left, int16_t *len);
 // @0x6368d896 / 0x636918d6 / 0x63694e1a: try one rule at position a1: match, run the left context
 // backwards and the right context forwards, then apply. AL = 1 if applied. prev_eax is the caller's EAX
 // (its upper half shows in the result and in what is passed on).
