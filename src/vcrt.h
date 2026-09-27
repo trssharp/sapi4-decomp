@@ -44,6 +44,7 @@ int cp1252_isupper(uint8_t ch);
 int cp1252_islower(uint8_t ch);
 uint8_t cp1252_toupper(uint8_t ch);
 uint8_t cp1252_tolower(uint8_t ch);
+int vc_IsCharAlphaNumericA(uint8_t ch);   // USER32: a letter, a digit, or superscript 1 2 3
 // lstrcmp(i)A / CompareStringA word sort (an approximation of Win32's, see vcrt.c); returns -1/0/1
 int vc_word_cmp(const uint8_t *a, int na, const uint8_t *b, int nb, int ignore_case);
 int vc_lstrcmpA(const char *a, const char *b);

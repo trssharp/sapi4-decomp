@@ -138,3 +138,7 @@ int vc_wcsicmp(const uint16_t *a, const uint16_t *b) {
         if (!x) return 0;
     }
 }
+
+int vc_IsCharAlphaNumericA(uint8_t ch) {
+    return cp1252_isalpha(ch) || (ch >= '0' && ch <= '9') || ch == 0xB2 || ch == 0xB3 || ch == 0xB9;
+}

@@ -21,6 +21,7 @@
 #include "fe_phrase.h"
 #include "fe_text.h"
 #include "fe_lexer.h"
+#include "fe_split.h"
 #include "../port/lexdump.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -1873,6 +1874,61 @@ static void t_lexwords(int iter) {
     emu_free(E, gw);
 }
 
+// the sentence splitter on texts built from what it looks for (abbreviations, initials, roman numerals,
+// numbers, brackets and quotes, line breaks), several sentences per call and from random starts
+static int split_runs, split_multi, split_skipped;
+static void t_split(int iter) {
+    static int inited;
+    if (!inited) { call(0x6369c2bd, 0, NULL); inited = 1; }
+    static const char *pieces[] = { "hello", "World", "The", "When", "It", "they", "Dr.", "St.", "No.", "no.", "fig.",
+        "figs.", "in.", "etc.", "P.S.", "PS.", "at", "A.B.C.", "U.S.", "IV", "iv.", "XII.", "Mr.", "Smith", "one", "Two",
+        "3", "42", "3.14", "1,000", "7.", "don't", "dogs'", "'tis", "'", "\"", "\xab", "\xbb", "(", ")", "[", "]", "{", "}",
+        ".", ".", ".", "!", "?", "?!", ";", ":", ",", "-", "...", ":-)", "\r\n", "\n", "\r", "  ", "\t", "a", "I", "S" };
+    char text[400];
+    int n = 0, lim = rndi(1, 300);
+    if (rnd() % 16 == 0) { memset(text, '(', 55); n = 55; }
+    while (n < lim) {
+        const char *pc = pieces[rnd() % (sizeof pieces / sizeof pieces[0])];
+        size_t l = strlen(pc);
+        memcpy(text + n, pc, l); n += (int)l;
+        if (rnd() % 3) text[n++] = ' ';
+    }
+    text[n] = 0;
+    int32_t max = rndi(1, 6);
+    uint32_t gt = galloc(420), gin = galloc(12), gout = galloc(0x24u * 8), gc = galloc(4), ge = galloc(4);
+    memcpy(gp(gt, 420), text, (size_t)n + 1);
+    SplitText *in = gp(gin, 12);
+    in->total = n;
+    in->start = (rnd() % 3) ? 0 : rndi(0, n);
+    in->base = gt;
+    uint8_t o1[0x24 * 8], g1[8];
+    uint32_t c1, e1, r1, r2;
+    memset(gp(gout, 0x24u * 8), 0x5a, 0x24u * 8);
+    wr32(C, gc, 0x77); wr32(C, ge, 0x77);
+    wr32(C, gaddr(0x63739990), 0x1234); wr32(C, gaddr(0x637399d4), 0x5678);
+    uint32_t a[6] = { rnd(), gin, (uint32_t)max, gout, gc, ge };
+    if (!call_bounded(0x6369aaa4, 6, a, &r1)) { split_skipped++; goto out; }
+    split_runs++;
+    memcpy(o1, gp(gout, 0x24u * 8), sizeof o1);
+    c1 = rd32(C, gc); e1 = rd32(C, ge);
+    if (c1 > 1) split_multi++;
+    memcpy(g1, gp(gaddr(0x63739990), 4), 4); memcpy(g1 + 4, gp(gaddr(0x637399d4), 4), 4);
+    memset(gp(gout, 0x24u * 8), 0x5a, 0x24u * 8);
+    wr32(C, gc, 0x77); wr32(C, ge, 0x77);
+    wr32(C, gaddr(0x63739990), 0x1234); wr32(C, gaddr(0x637399d4), 0x5678);
+    r2 = (uint32_t)split_sentences((int32_t)a[0], in, max, gp(gout, 0x24u * 8), gp(gc, 4), gp(ge, 4));
+    check("split_sentences", iter, "EAX", &r1, &r2, 4);
+    check("split_sentences", iter, "count", &c1, gp(gc, 4), 4);
+    check("split_sentences", iter, "eot", &e1, gp(ge, 4), 4);
+    check("split_sentences", iter, "sentences", o1, gp(gout, 0x24u * 8), sizeof o1);
+    uint8_t g2[8];
+    memcpy(g2, gp(gaddr(0x63739990), 4), 4); memcpy(g2 + 4, gp(gaddr(0x637399d4), 4), 4);
+    check("split_sentences", iter, "globals", g1, g2, 8);
+    if (getenv("VDBG") && memcmp(o1, gp(gout, 0x24u * 8), sizeof o1)) fprintf(stderr, "  text [%s] start %d max %d\n", text, in->start, max);
+out:
+    emu_free(E, gt); emu_free(E, gin); emu_free(E, gout); emu_free(E, gc); emu_free(E, ge);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -1939,12 +1995,13 @@ int main(int argc, char **argv) {
         t_text(it);
         t_lexer(it);
         t_lexwords(it);
+        t_split(it);
         if (it < 600) t_main(it);
         if (it < 900) t_proc(it);
         if (it < 500) t_viterbi(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
-    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed);
+    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d, texts split %d (%d into several sentences, %d skipped))\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed, split_runs, split_multi, split_skipped);
     return fails ? 1 : 0;
 }

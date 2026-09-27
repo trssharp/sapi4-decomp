@@ -7,6 +7,7 @@
 #include "fe_output.h"
 #include "fe_text.h"
 #include "fe_lexer.h"
+#include "fe_split.h"
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -560,3 +561,32 @@ void hk_lex_emoticon(Emu *e, X86 *c) { E_RET((uint32_t)lex_emoticon(GPH(char, A(
 void hk_lex_next(Emu *e, X86 *c) { uint32_t self = c->s.r[ECX]; lex_next(GPH(Lexer, self, sizeof(Lexer)), GPH(TextSpan, A(0), sizeof(TextSpan))); E_RET(self + 0x10); }
 void hk_lex_init(Emu *e, X86 *c) { uint32_t self = c->s.r[ECX]; lex_init(GPH(Lexer, self, sizeof(Lexer)), A(0), AI(1)); E_RET(self + 0x10); }
 void hk_lex_classes(Emu *e, X86 *c) { lex_classes(); E_RET(c->s.r[EAX]); }
+
+// ------------------------------------------------------------------ sentence splitter (fe_split.c)
+#undef SPAN
+#define SPAN(a) GPH(TextSpan, (a), sizeof(TextSpan))
+void hk_quotes_track(Emu *e, X86 *c) { quotes_track(THIS(Quotes), SPAN(A(0)), AI(1), AI(2), AI(3)); }
+void hk_quotes_open(Emu *e, X86 *c) { E_RET((uint32_t)quotes_open(THIS(Quotes))); }
+void hk_quotes_apostrophe(Emu *e, X86 *c) { E_RET((uint32_t)quotes_apostrophe(THIS(Quotes), SPAN(A(0)))); }
+void hk_quotes_clamp(Emu *e, X86 *c) { quotes_clamp(GPH(Quotes, A(1), sizeof(Quotes))); }
+void hk_brackets_update(Emu *e, X86 *c) {
+    // (a 51st entry writes one dword past the object, as the original does)
+    brackets_update(GPH(Brackets, c->s.r[ECX], sizeof(Brackets) + 4), SPAN(A(0)), SPAN(A(1)), GPH(char, A(2), 1));
+    E_RET(0);
+}
+void hk_brackets_peek(Emu *e, X86 *c) { E_RET((uint32_t)brackets_peek(GPH(Brackets, c->s.r[ECX], sizeof(Brackets) + 4), GPH(int32_t, A(0), 4))); }
+void hk_brackets_classify(Emu *e, X86 *c) { brackets_classify(SPAN(A(0)), GPH(int32_t, A(1), 4), GPH(int32_t, A(2), 4)); }
+void hk_span_set_kind(Emu *e, X86 *c) { span_set_kind(THIS(TextSpan), AI(0)); E_RET(c->s.r[ECX]); }
+void hk_span_differs(Emu *e, X86 *c) { E_RET((uint32_t)span_differs(THIS(TextSpan), SPAN(A(0)))); }
+void hk_span_before_last(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)span_before_last(THIS(TextSpan))); }
+void hk_word_not_roman(Emu *e, X86 *c) { E_RET((uint32_t)word_not_roman(SPAN(A(0)))); }
+void hk_word_initials(Emu *e, X86 *c) { E_RET((uint32_t)word_initials(SPAN(A(0)))); }
+void hk_word_is_number(Emu *e, X86 *c) { E_RET((uint32_t)word_is_number(*SPAN(c->s.r[ESP] + 4))); }
+void hk_word_number_name(Emu *e, X86 *c) { E_RET((uint32_t)word_number_name(GPH(char, A(0), 1), A(1))); }
+void hk_word_equals(Emu *e, X86 *c) { E_RET((uint32_t)word_equals(GSTR(A(0)), GPH(char, A(1), 1), AI(2))); }
+void hk_split_sentences(Emu *e, X86 *c) {
+    int32_t max = AI(2);
+    E_RET((uint32_t)split_sentences(AI(0), GPH(SplitText, A(1), sizeof(SplitText)), max,
+                                    GPH(Sentence, A(3), sizeof(Sentence) * (uint32_t)(max > 0 ? max : 1)),
+                                    GPH(int32_t, A(4), 4), GPH(int32_t, A(5), 4)));
+}

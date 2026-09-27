@@ -405,7 +405,7 @@ static void h_CharLowerA(Emu *e, X86 *c) {
     E_RET(p);
 }
 static void h_IsCharAlphaA(Emu *e, X86 *c) { (void)e; E_RET(cp1252_isalpha((uint8_t)A(0))); }
-static void h_IsCharAlphaNumericA(Emu *e, X86 *c) { (void)e; uint8_t ch = (uint8_t)A(0); E_RET(cp1252_isalpha(ch) || (ch >= '0' && ch <= '9') || ch == 0xB2 || ch == 0xB3 || ch == 0xB9); }
+static void h_IsCharAlphaNumericA(Emu *e, X86 *c) { (void)e; E_RET(vc_IsCharAlphaNumericA((uint8_t)A(0))); }
 static void h_IsCharUpperA(Emu *e, X86 *c) { (void)e; E_RET(cp1252_isupper((uint8_t)A(0))); }
 static void h_IsCharLowerA(Emu *e, X86 *c) { (void)e; E_RET(cp1252_islower((uint8_t)A(0))); }
 static void h_wsprintfA(Emu *e, X86 *c) {
