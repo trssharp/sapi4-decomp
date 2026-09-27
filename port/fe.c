@@ -91,10 +91,6 @@ int main(int argc, char **argv) {
 // never takes
 int32_t user_lex_load(UserLex *t) { (void)t; return 0; }
 int32_t text_from_other(char *text, GPTR(char) *out) { (void)text; (void)out; fprintf(stderr, "port_fe: text mode not decompiled\n"); abort(); }
-void pros_alt_a(Prosody *p) { (void)p; abort(); }
-void pros_alt_b(Prosody *p) { (void)p; abort(); }
-void pros_alt_c(Prosody *p) { (void)p; abort(); }
-void pros_alt_d(GPTR(float) *tmp, Prosody *p) { (void)tmp; (void)p; abort(); }
 uint8_t vm_proc_guest(int inst, uint8_t n, int16_t *left, int16_t *len) {
     (void)left; (void)len;
     fprintf(stderr, "rule procedure %d/%d is not decompiled\n", inst, n);

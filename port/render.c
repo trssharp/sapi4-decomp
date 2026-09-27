@@ -190,7 +190,10 @@ int main(int argc, char **argv) {
     f.h[1] = q_text->ev_nonempty;
     f.h2[0] = fe->abort_event;
     f.h2[1] = q_phones->ev_room;
+    static uint32_t rand_fe = 1;
+    vc_rand_use(&rand_fe);      // (the front end's thread's own rand state: the alternative prosody draws on it)
     fe_text_item(fe, &f);
+    vc_rand_use(NULL);
     if (getenv("PORT_DEBUG")) fprintf(stderr, "after front end: %u phrase items\n", q_phones->count);
     static uint32_t rand_unit = 1, rand_synth = 1;
     run_stage(unit_loop, u, &rand_unit);
@@ -217,10 +220,6 @@ int main(int argc, char **argv) {
 // what the portable build has no C for yet; none of it is reached by the voices this was checked with
 int32_t user_lex_load(UserLex *t) { (void)t; return 0; }
 int32_t text_from_other(char *text, GPTR(char) *out) { (void)text; (void)out; fprintf(stderr, "text mode not decompiled\n"); abort(); }
-void pros_alt_a(Prosody *p) { (void)p; abort(); }
-void pros_alt_b(Prosody *p) { (void)p; abort(); }
-void pros_alt_c(Prosody *p) { (void)p; abort(); }
-void pros_alt_d(GPTR(float) *tmp, Prosody *p) { (void)tmp; (void)p; abort(); }
 uint8_t vm_proc_guest(int inst, uint8_t n, int16_t *left, int16_t *len) {
     (void)left; (void)len;
     fprintf(stderr, "rule procedure %d/%d is not decompiled\n", inst, n);

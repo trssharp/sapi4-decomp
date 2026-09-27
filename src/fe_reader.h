@@ -18,15 +18,42 @@ typedef struct UserLex {
 } UserLex;
 
 // the phrase being turned into phones (part of WordInput)
+// the alternative prosody (mode 0): one record per word of the phrase
+typedef struct AltRec {
+    char name[0x1e];            // 0x00 the word's phone characters (tape 1)
+    char chars[0x1e];           // 0x1e its tape-7 characters, without '~' and ' ' (the key)
+    char c3c, c3d, c3e, _3f;    // 0x3c the word's marks from tapes 5, 4 and 3 ('_': none)
+    int32_t f40;                // 0x40 starts a phrase
+    int32_t f44;                // 0x44 ends a phrase ('#')
+    int32_t f48, f4c;           // 0x48 a pause (tape 5 blank) before it / after it
+    int32_t f50, f54;           // 0x50 its first character is of class 1 / the next word's is of class 2
+    int32_t _58, _5c;
+    int32_t f60, f64;           // 0x60 start and end pitch (quarter semitones, then scaled)
+} AltRec;
+// a group of words between phrase starts, as the alternative prosody predicts them (0x340 bytes)
+typedef struct AltGroup {
+    int32_t n;                  // 0x00 words with a key
+    int32_t count;              // 0x04 words
+    char last[0xc];             // 0x08 the last word's key (strcpy: may run on into `str`, set after)
+    GPTR(char) str;             // 0x14 malloc'd: the keys, runs of keyless words as counts
+    uint8_t _18[0x340 - 0x14 - sizeof(GPTR(char))];
+} AltGroup;
+
 typedef struct Prosody {
     int32_t g0, g4;             // 0x00 copies of 0x63738b6c / 0x63738b70
     int32_t _08;
     GPTR(char) s[9];            // 0x0c copies of the word object's tapes, and (s[8]) its output string
     GPTR(int32_t) phone_pos;    // 0x30 per phone character: its position (kind 4 events)
-    int32_t f34;                // 0x34
-    uint8_t _38[0x3d94 - 0x38];
-    int32_t f3d94;              // 0x3d94
-    uint8_t _3d98[0x4640 - 0x3d98];
+    int32_t f34;                // 0x34 (mode 0: the index of the last word record)
+    AltRec w[0x97];             // 0x38 (mode 0) the words (the code also writes one record further, over
+                                //   the fields that follow: see fe_altpros.c)
+    uint8_t _3d90[4];
+    int32_t f3d94;              // 0x3d94 (mode 0) phrase starts seen
+    int32_t _3d98;
+    int32_t f3d9c;              // 0x3d9c (mode 0) phrase ends seen
+    uint8_t _3da0[8];
+    uint8_t z3da8[0x97];        // 0x3da8 cleared at each phrase start
+    char marks[0x4640 - 0x3e3f];  // 0x3e3f (mode 0) the words' first tape-7 characters, and a last one
     GPTR(float) pitch;          // 0x4640 per phone: pitch (Hz or quarter semitones)
     GPTR(char) phones;          // 0x4644 the phone characters
     int32_t targets[1000][2];   // 0x4648 pitch targets: (time, value), ended by (0x7fffffff, 0)
@@ -35,14 +62,14 @@ typedef struct Prosody {
     int32_t phone_dur[1000];    // 0x7910
     GPTR(uint8_t) alt[7000];    // 0x88b0 the alternative prosody's data records (0x340 bytes each)
     int32_t nalt;               // 0xf610
-    GPTR(uint8_t) recs;         // 0xf614 records of 0x340 bytes (each with a malloc'd pointer at +0x14)
+    GPTR(AltGroup) recs;        // 0xf614 (mode 0) the word groups
     int32_t nrecs;              // 0xf618
     int32_t npitch;             // 0xf61c
     int32_t pitch_hz;           // 0xf620
     int32_t f624;               // 0xf624
     struct { char name[0x24]; int32_t v[4]; } alt_tab[25];   // 0xf628 the alternative prosody's table
     int32_t nalt_tab;           // 0xfb3c
-    int32_t mode;               // 0xfb40 0: the alternative prosody (not decompiled)
+    int32_t mode;               // 0xfb40 0: the alternative prosody
 } Prosody;
 
 // the per-voice input buffer (0x63738968 + 4 * index points to one)

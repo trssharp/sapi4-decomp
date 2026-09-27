@@ -30,10 +30,21 @@ void phrase_free(Prosody *p, int32_t mode);                      // @0x63677da6 
 int32_t phones_build(int32_t idx, PhoneIn *out, int32_t final, int32_t unused);  // @0x636778a7 stdcall
 void words_abort(int32_t idx);                                   // @0x63677911 stdcall
 
-// not decompiled yet (harness/guest.c): the alternative prosody (mode 0)
-void pros_alt_a(Prosody *p);                                     // @0x636798ce
-void pros_alt_b(Prosody *p);                                     // @0x6367930a
-void pros_alt_c(Prosody *p);                                     // @0x636787f9
-void pros_alt_d(GPTR(float) *tmp, Prosody *p);                   // @0x6367877e
+// the alternative prosody (mode 0: characters such as "Excited"), src/fe_altpros.c: word records
+// with their keys, a random walk of each group's start and end pitch within the voice's table, and a
+// cosine interpolation between them
+void pros_alt_a(Prosody *p);                    // @0x636798ce stdcall: the word records from the tapes
+void pros_alt_b(Prosody *p);                    // @0x6367930a stdcall: the word groups (between phrase starts)
+void pros_alt_c(Prosody *p);                    // @0x636787f9 stdcall: phones and pitch from the predictions
+void pros_alt_d(GPTR(float) *tmp, Prosody *p);  // @0x6367877e stdcall: pitch as Hz, blended with *tmp
+int32_t alt_class1(char c);                     // @0x63679b9f stdcall
+int32_t alt_class2(char c);                     // @0x63679be9 stdcall
+int32_t alt_sonorant(char c);                   // @0x636787d0 stdcall: in the first 28 of the phone letters
+int32_t alt_tab_find(const char *key, const Prosody *p);  // @0x63678700 stdcall: -1 if absent
+void alt_predict(Prosody *p, void *unused, int32_t unused2);  // @0x63678aaf stdcall: each word's f60 / f64
+void alt_interpolate(float *v, int32_t n);      // @0x63679c29 stdcall: runs of zeros filled (cosine)
+// @0x63679d05 stdcall: between (x0, y0) and (x1, y1) at x, cosine-weighted (5 doubles by value)
+double alt_cosine(double x0, double x, double x1, double y0, double y1);
+double alt_hz(float v);                         // @0x63678740 stdcall: 50 * 2^((v - (0x5f - g)) / 48)
 // the phone list as text, floats exactly (a comparison aid, not part of the engine)
 void phones_print(FILE *f, const PhoneIn *ph, int32_t n);

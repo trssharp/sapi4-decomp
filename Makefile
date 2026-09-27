@@ -88,7 +88,7 @@ port-lex-baked-check: build/port_lex_baked port-lex-check
 # the portable front end: text to the unit stage's phone lists with the C alone, against the phone lists
 # the original front end produces in the emulator (golden texts, plain)
 PORTFE = $(PORTC) src/fe_small.c src/fe_word.c src/fe_phrase.c src/fe_output.c src/fe_text.c src/fe_lexer.c \
-	src/fe_split.c src/fe_input.c src/fe_reader.c src/fe_phones.c src/fe_out.c src/fe_init.c src/queue.c src/tags.c src/containers.c
+	src/fe_split.c src/fe_input.c src/fe_reader.c src/fe_phones.c src/fe_out.c src/fe_init.c src/queue.c src/tags.c src/containers.c src/fe_altpros.c
 build/port_fe: port/fe.c port/dllimage.c port/dllimage.h $(PORTFE) $(wildcard src/*.h)
 	@mkdir -p build
 	$(PORTCC) -o $@ port/fe.c port/dllimage.c $(PORTFE) -lm
@@ -117,3 +117,6 @@ build/port_render_baked: port/render.c port/dllimage.c port/dllimage.h build/dll
 port-render-baked-check: build/port_render_baked
 	@./tools/port_render_check.sh build/port_render_baked
 .PHONY: port-render-baked-check
+port-tags-check: build/port_render build/sapi4_speak
+	@./tools/port_tags_check.sh
+.PHONY: port-tags-check

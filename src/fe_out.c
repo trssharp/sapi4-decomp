@@ -35,9 +35,10 @@ int32_t fe_set_pitch_level(FrontEnd *fe, uint16_t v) {
 
 // a tag record: prefix, the entry's text, a closing backslash
 static void tag_rec(PhoneIn **out, int32_t *count, uint32_t prefix, const char *text) {
-    strcpy((*out)->name, DLLVAR(const char, prefix));
-    strcat((*out)->name, text);
-    strcat((*out)->name, DLLVAR(const char, 0x6371f18c));     // "\"
+    char *d = (char *)(void *)*out;     // (a tag may run past the name into the record's other fields)
+    strcpy(d, DLLVAR(const char, prefix));
+    strcat(d, text);
+    strcat(d, DLLVAR(const char, 0x6371f18c));     // "\"
     (*out)++;
     (*count)++;
 }

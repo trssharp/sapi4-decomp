@@ -24,6 +24,7 @@
 #include "fe_split.h"
 #include "fe_input.h"
 #include "fe_reader.h"
+#include "fe_phones.h"
 #include "crt_vc.h"
 #include "../port/lexdump.h"
 #include <stdio.h>
@@ -649,6 +650,101 @@ static void t_latapply(int iter) {
     check("unit_lattice_apply", iter, "result", &r1, &r2, 4);
     heap_check("unit_lattice_apply", iter, &h1);
     free(h0.mem); free(h1.mem);
+}
+
+// the alternative prosody (mode 0; no character of the shipped voices opens it) on random word tapes:
+// each of its four passes, original then C from the same state, the heap and the rand state compared
+static int alt_runs, alt_words;
+static void alt_step(const char *fn, int iter, uint32_t pref, int nargs, const uint32_t *args,
+                     void (*c_fn)(uint32_t *a)) {
+    HeapSnap h0; heap_snap(&h0);
+    uint32_t seed = E->cur->rand_seed;
+    call(pref, nargs, args);
+    HeapSnap h1; heap_snap(&h1);
+    uint32_t seed1 = E->cur->rand_seed;
+    heap_restore(&h0);
+    E->cur->rand_seed = seed;
+    c_fn((uint32_t *)args);
+    heap_check(fn, iter, &h1);
+    check(fn, iter, "rand state", &seed1, &E->cur->rand_seed, 4);
+    free(h0.mem); free(h1.mem);
+}
+static void c_alt_a(uint32_t *a) { pros_alt_a(gp(a[0], sizeof(Prosody))); }
+static void c_alt_b(uint32_t *a) { pros_alt_b(gp(a[0], sizeof(Prosody))); }
+static void c_alt_c(uint32_t *a) { pros_alt_c(gp(a[0], sizeof(Prosody))); }
+static void c_alt_d(uint32_t *a) { pros_alt_d(gp(a[0], 4), gp(a[1], sizeof(Prosody))); }
+static void t_altpros(int iter) {
+    static const char *phones = "AaIiUuoEe^JYyORlrjwmnNbdgptkfvszTDSZh";
+    static const char *keys = "1237ABFHPSY_abchp)]8";
+    static const char *tabnames[] = { "a]", "h]", "_]", "p2", "h2", "h", "8", "7", "1", "2", "3", "A", "a", "b", "c", "H", "p" };
+    uint32_t gpz = galloc(sizeof(Prosody));
+    Prosody *p = gp(gpz, sizeof(Prosody));
+    memset(p, 0, sizeof *p);
+    char t1[700], t3[700], t4[700], t5[700], t7[700];
+    int n = 0, words = rndi(1, 60);
+    if (rnd() % 3 == 0) { t1[n++] = '#'; if (rnd() % 2) t1[n++] = '#'; }
+    for (int w = 0; w < words; w++) {
+        int l = rndi(1, 6);
+        for (int k = 0; k < l && n < 600; k++) {
+            if (rnd() % 8 == 0) { char c0 = rnd() % 2 ? 'd' : 't'; t1[n++] = c0; t1[n++] = c0 == 'd' ? 'Z' : 'S'; }
+            else t1[n++] = phones[rnd() % strlen(phones)];
+        }
+        t1[n++] = (w == words - 1 || rnd() % 6 == 0) ? '#' : '-';
+    }
+    if (rnd() % 2) t1[n++] = '#';
+    t1[n] = 0;
+    for (int k = 0; k <= n + 1; k++) {
+        int r = (int)(rnd() % 10);
+        t3[k] = r < 7 ? '~' : keys[rnd() % strlen(keys)];
+        t4[k] = r < 7 ? ' ' : keys[rnd() % strlen(keys)];
+        t5[k] = r < 5 ? '~' : r < 8 ? ' ' : keys[rnd() % strlen(keys)];
+        r = (int)(rnd() % 10);
+        t7[k] = r < 4 ? '~' : r < 7 ? ' ' : keys[rnd() % strlen(keys)];
+    }
+    t3[n + 2] = t4[n + 2] = t5[n + 2] = t7[n + 2] = 0;
+    const char *tp[5] = { t1, t3, t4, t5, t7 };
+    int slot[5] = { 1, 3, 4, 5, 7 };
+    for (int k = 0; k < 5; k++) {
+        uint32_t g = galloc(704);
+        memcpy(gp(g, 704), tp[k], 704);
+        p->s[slot[k]] = g;
+    }
+    p->nalt_tab = rndi(1, 25);
+    for (int e = 0; e < p->nalt_tab; e++) {
+        strcpy(p->alt_tab[e].name, tabnames[rnd() % (sizeof tabnames / sizeof tabnames[0])]);
+        p->alt_tab[e].v[0] = rndi(40, 220); p->alt_tab[e].v[1] = rndi(1, 40);
+        p->alt_tab[e].v[2] = rndi(40, 220); p->alt_tab[e].v[3] = rndi(1, 40);
+    }
+    p->pitch_hz = rndi(60, 250);
+    p->f624 = rndi(60, 250);
+    E->cur->rand_seed = rnd();
+    uint32_t a[2] = { gpz, 0 };
+    alt_step("pros_alt_a", iter, 0x636798ce, 1, a, c_alt_a);
+    if (p->f34 < 0 || p->f34 > 0x90) return;
+    alt_step("pros_alt_b", iter, 0x6367930a, 1, a, c_alt_b);
+    alt_step("pros_alt_c", iter, 0x636787f9, 1, a, c_alt_c);
+    alt_runs++;
+    alt_words += p->f34 + 1;
+    uint32_t gt = galloc(4u * (uint32_t)(p->npitch + 1)), gtp = galloc(4);
+    for (int k = 0; k <= p->npitch; k++) ((float *)gp(gt, 4u * (uint32_t)(p->npitch + 1)))[k] = (float)rndi(0, 300) / 3.0f;
+    wr32(C, gtp, gt);
+    uint32_t d[2] = { gtp, gpz };
+    alt_step("pros_alt_d", iter, 0x6367877e, 2, d, c_alt_d);
+    // the interpolation alone, zeros anywhere but first
+    int m = rndi(1, 60);
+    uint32_t gv = galloc(4u * (uint32_t)m + 8);
+    float *v = gp(gv, 4u * (uint32_t)m + 8);
+    for (int k = 0; k < m + 2; k++) v[k] = (rnd() % 2) ? 0.0f : (float)rndi(1, 400);
+    v[0] = (float)rndi(1, 400);
+    v[m - 1] = (float)rndi(1, 400);
+    uint32_t ia[2] = { gv, (uint32_t)m };
+    float save[64], o1[64];
+    memcpy(save, v, 4u * (uint32_t)m);
+    call(0x63679c29, 2, ia);
+    memcpy(o1, v, 4u * (uint32_t)m);
+    memcpy(v, save, 4u * (uint32_t)m);
+    alt_interpolate(v, m);
+    check("alt_interpolate", iter, "values", o1, v, 4u * (uint32_t)m);
 }
 
 // unit_prosody_a on random phrases: every field it reads, random; the unit array and the stage compared
@@ -2349,6 +2445,7 @@ int main(int argc, char **argv) {
         t_tags(it);
         t_senone(it);
         t_latapply(it);
+        t_altpros(it);
         t_prosody(it);
         t_tapes(it);
         t_rate(it);
@@ -2378,6 +2475,6 @@ int main(int argc, char **argv) {
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
-    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d, texts split %d (%d into several sentences, %d skipped), reader runs %d with %d events, %d with user lexicon words; results -3..7: %d %d %d %d %d %d %d %d %d %d %d; lattice rule runs %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed, split_runs, split_multi, split_skipped, reader_runs, reader_events, reader_lex, reader_rc[1], reader_rc[2], reader_rc[3], reader_rc[4], reader_rc[5], reader_rc[6], reader_rc[7], reader_rc[8], reader_rc[9], reader_rc[10], reader_rc[11], lat_runs);
+    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d, texts split %d (%d into several sentences, %d skipped), reader runs %d with %d events, %d with user lexicon words; results -3..7: %d %d %d %d %d %d %d %d %d %d %d; lattice rule runs %d; alternative prosody runs %d over %d words)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed, split_runs, split_multi, split_skipped, reader_runs, reader_events, reader_lex, reader_rc[1], reader_rc[2], reader_rc[3], reader_rc[4], reader_rc[5], reader_rc[6], reader_rc[7], reader_rc[8], reader_rc[9], reader_rc[10], reader_rc[11], lat_runs, alt_runs, alt_words);
     return fails ? 1 : 0;
 }

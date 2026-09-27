@@ -18,6 +18,7 @@ cat > "$OUT/texts.txt" <<'T'
 0|A b c d e f g h i j k l m n o p q r s t u v w x y z. 0 1 2 3 4 5 6 7 8 9 10 100 1000 1000000 3.14159 -42 1/2 50% #1
 1|Hello \Pit=150\ there, \Spd=250\ quickly \Vol=30000\ and \Emp\ loudly. \Chr=Whisper\ Psst. \Rst\ Done.
 1|\Mrk=1\ One \Mrk=2\ two. \Pau=500\ Three \Prn=h eh l ow\ four \Spd=60\ slowly \Pit=60\ low.
+1|\Chr="Excited"\ The quick brown fox jumps over the lazy dog! Is it? Yes; on March 3rd, 2021, I paid $45.99.
 0|It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness.
 T
 "$BIN" -d data/msttsl -l | sed -E 's/ +speaker=.*//' | grep -i -- "${1:-.}" > "$OUT/modes.txt"

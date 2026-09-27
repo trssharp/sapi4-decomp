@@ -426,10 +426,10 @@ void phrase_free(Prosody *p, int32_t mode) {
     }
     if (mode == 0) {
         for (int32_t i = 0; i < p->nrecs; i++) {
-            GPTR(uint8_t) q = *(GPTR(uint8_t) *)(void *)(GP(uint8_t, p->recs) + 0x340 * i + 0x14);
-            if (q) vc_free(GP(uint8_t, q));
+            GPTR(char) q = GP(AltGroup, p->recs)[i].str;
+            if (q) vc_free(GP(char, q));
         }
-        vc_free(GP(uint8_t, p->recs));
+        vc_free(GP(AltGroup, p->recs));
     }
 }
 
