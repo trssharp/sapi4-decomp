@@ -3,6 +3,7 @@
 #include "adapters.h"
 #include "dsp.h"
 #include "fft.h"
+#include "lpc.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -92,4 +93,9 @@ void hk_fft_inverse_real(Emu *e, X86 *c) {
     int n = AI(1), m = AI(2);
     // the table is read up to sine[3*step*j + n/2] < 2n
     fft_inverse_real(PTR(float, A(0), n), n, m, PTR(float, A(3), n > 0 ? 2 * n : 0));
+}
+
+void hk_lpc_from_lsf(Emu *e, X86 *c) {
+    int order = AI(2);
+    lpc_from_lsf(PTR(float, A(0), order), PTR(float, A(1), order + 1), order, AI(3));
 }

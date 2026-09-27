@@ -7,6 +7,7 @@
 #include "hooks.h"
 #include "dsp.h"
 #include "fft.h"
+#include "lpc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -156,6 +157,20 @@ static void t_fft(int iter) {
     check("fft_inverse_real", iter, "x", gp(gx, 4u * n), fx, 4u * n);
 }
 
+static void t_lpc(int iter) {
+    int order = 2 * rndi(1, 10) + (iter % 7 == 0 ? 1 : 0);
+    float l[40], o[41];
+    for (int i = 0; i < order; i++) l[i] = (float)(i + 1) / (2.0f * (order + 1)) + ((float)(int)(rnd() % 1000) - 500) * 1e-5f;
+    if (iter % 3 == 0) for (int i = 0; i < order; i++) l[i] = (float)(rnd() % 5000) / 10000.0f;   // unsorted, ties
+    uint32_t gl = galloc(4u * order), go = galloc(4u * (order + 1));
+    memcpy(gp(gl, 4u * order), l, 4u * order);
+    uint32_t a[4] = { gl, go, (uint32_t)order, 0 };
+    call(0x63678470, 4, a);
+    lpc_from_lsf(l, o, order, 0);
+    check("lpc_from_lsf", iter, "out", gp(go, 4u * (order + 1)), o, 4u * (order + 1));
+    check("lpc_from_lsf", iter, "lsf (sorted in place)", gp(gl, 4u * order), l, 4u * order);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -172,6 +187,7 @@ int main(int argc, char **argv) {
         t_vec(it);
         t_more(it);
         t_fft(it);
+        t_lpc(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
     printf("unit: %d checks, %d mismatches\n", cases, fails);
