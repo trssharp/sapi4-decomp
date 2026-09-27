@@ -94,7 +94,7 @@ int16_t lex_bsearch16(uint32_t table, uint32_t base, uint16_t lo, uint16_t hi, u
 
 int tapes_printable(int16_t lo, int16_t hi) {
     for (int16_t i = lo; i <= hi; i++) {
-        uint8_t ch = (uint8_t)GP(char, *DLLVAR(GPTR(char), TAPE_A))[i];
+        uint8_t ch = (uint8_t)GP(char, *DLLPTR(char, TAPE_A))[i];
         if (ch < 0x20 || ch > 0xfe) return 0;
     }
     return 1;
@@ -131,7 +131,7 @@ const LexDict lex_dicts[] = {
       LEX_FIELD_TABLE16, 0x636c8080, 16, 0x636b99a8, 0x636b97a6, 0x63739750, 0x63739780, 0x63739e6b, 5, 17, 0x21, '!', 3, 0 },
 };
 
-#define TP(addr) GP(char, *DLLVAR(GPTR(char), addr))
+#define TP(addr) GP(char, *DLLPTR(char, addr))
 
 uint8_t lex_lookup(const LexDict *d, int16_t *left, int16_t *len) {
     uint8_t ok = 1;

@@ -17,6 +17,7 @@
 #include "voice.h"
 #include "fe_vm.h"
 #include "fe_lex.h"
+#include "../port/lexdump.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1631,6 +1632,29 @@ int main(int argc, char **argv) {
     decomp_guest_mem = C->mem;
     decomp_load_delta = M->base - MSTTS_PREF_BASE;
     decomp_emu = E;
+    if (argc > 2 && !strcmp(argv[2], "--lexdump")) {
+        // the original's main lexicon on words from stdin (the reference for port_lex)
+        const RuleVM *vm = &rule_vm[2];
+        uint32_t blk = galloc(0x5000), gl = galloc(8);
+        uint8_t *b = gp(blk, 0x5000);
+        char word[256];
+        while (fgets(word, sizeof word, stdin)) {
+            word[strcspn(word, "\r\n")] = 0;
+            int n = (int)strlen(word);
+            if (!n || n > 60) continue;
+            memset(b, 'q', 0x5000);
+            for (int q = 0; q < 6; q++) wr32(C, gaddr(vm->tape[q]), blk + lexdump_toff[q]);
+            int16_t left = 20;
+            memcpy(b + lexdump_toff[0] + left, word, (size_t)n);
+            int16_t l1 = (int16_t)(left + 1), len = (int16_t)(left + n);
+            memcpy(gp(gl, 2), &l1, 2); memcpy(gp(gl + 4, 2), &len, 2);
+            uint32_t a[2] = { gl, gl + 4 };
+            uint8_t found = (uint8_t)call(0x6369986b, 2, a);
+            memcpy(&len, gp(gl + 4, 2), 2);
+            lexdump_print(stdout, word, found, b, (int16_t)(left + 1), len);
+        }
+        return 0;
+    }
     for (int it = 0; it < iters; it++) {
         t_filter(0, it); t_filter(1, it); t_filter(2, it);
         t_vec(it);

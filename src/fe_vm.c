@@ -7,9 +7,9 @@ const RuleVM rule_vm[3] = {
     { { 0x63739e7c, 0x63739e6c, 0x63739e78, 0x63739e70, 0x63739e74, 0x637395b4 }, 0x63721f78, 0x63739688 },
 };
 
-#define TAPE(vm, k) GP(char, *DLLVAR(GPTR(char), (vm)->tape[k]))
+#define TAPE(vm, k) GP(char, *DLLPTR(char, (vm)->tape[k]))
 #define TOP(vm) (*DLLVAR(int16_t, (vm)->top))
-#define PC(vm) (*DLLVAR(GPTR(uint8_t), (vm)->pc))
+#define PC(vm) (*DLLPTR(uint8_t, (vm)->pc))
 
 void vm_shift_right(const RuleVM *vm, int16_t lo, int16_t hi) {
     if (hi >= lo)
@@ -110,13 +110,13 @@ const CondVM cond_vm[3] = {
 };
 
 uint32_t vm_cond(const CondVM *vm, uint8_t end, int32_t pos) {
-    GPTR(uint8_t) *PCv = DLLVAR(GPTR(uint8_t), vm->pc);
+    GPTR(uint8_t) *PCv = DLLPTR(uint8_t, vm->pc);
     uint8_t *pc = GP(uint8_t, *PCv);
     if (vm->pos16) pos = (int16_t)pos;
 #define RET(r) return ((uint32_t)GRAW(*PCv) & ~0xffu) | (r)   // (pc == *PCv at every return)
     if (pc[0] == end) RET(1u);
-    GPTR(char) saved = *DLLVAR(GPTR(char), vm->saved);
-    GPTR(char) cur = *DLLVAR(GPTR(char), vm->cur);
+    GPTR(char) saved = *DLLPTR(char, vm->saved);
+    GPTR(char) cur = *DLLPTR(char, vm->cur);
     uint8_t ch = *DLLVAR(uint8_t, vm->ch);
     const uint8_t *vars = DLLVAR(const uint8_t, vm->vars);
     for (;;) {
@@ -124,15 +124,15 @@ uint32_t vm_cond(const CondVM *vm, uint8_t end, int32_t pos) {
         switch (op) {
         case 0xef: case 0xf1:
             saved = cur;
-            *DLLVAR(GPTR(char), vm->saved) = saved;
-            cur = DLLVAR(GPTR(char), vm->tapes)[arg];
-            *DLLVAR(GPTR(char), vm->cur) = cur;
+            *DLLPTR(char, vm->saved) = saved;
+            cur = DLLPTR(char, vm->tapes)[arg];
+            *DLLPTR(char, vm->cur) = cur;
             ch = (uint8_t)GP(char, cur)[pos];
             *DLLVAR(uint8_t, vm->ch) = ch;
             break;
         case 0xee: case 0xf0:
             cur = saved;
-            *DLLVAR(GPTR(char), vm->cur) = cur;
+            *DLLPTR(char, vm->cur) = cur;
             ch = (uint8_t)GP(char, saved)[pos];
             *DLLVAR(uint8_t, vm->ch) = ch;
             break;
@@ -189,11 +189,11 @@ uint8_t vm_exec(int inst) {
     const RunVM *rv = &run_vm[inst];
     const CondVM *cv = &cond_vm[inst];
     const MatchVM *mv = &match_vm[inst];
-    GPTR(uint8_t) *PCv = DLLVAR(GPTR(uint8_t), rv->pc);
+    GPTR(uint8_t) *PCv = DLLPTR(uint8_t, rv->pc);
     int16_t *P = DLLVAR(int16_t, rv->pos), *A = DLLVAR(int16_t, rv->pos0), *S = DLLVAR(int16_t, rv->step);
     int16_t *nch = DLLVAR(int16_t, rv->nch), *last = DLLVAR(int16_t, mv->last);
     uint8_t *chg = DLLVAR(uint8_t, cv->ch), *tries = DLLVAR(uint8_t, rv->tries);
-    GPTR(char) *T = DLLVAR(GPTR(char), rv->cur);
+    GPTR(char) *T = DLLPTR(char, rv->cur);
     uint8_t *pc = GP(uint8_t, *PCv);
     uint8_t bl = 1;
     int32_t cnt = 0;
@@ -254,15 +254,15 @@ uint8_t vm_exec(int inst) {
         break;
     }
     case 0xef: case 0xf1:                   // switch to tape pc[1]
-        *DLLVAR(GPTR(char), exec_saved[inst]) = *T;
+        *DLLPTR(char, exec_saved[inst]) = *T;
         SETPC(++pc);
-        *T = DLLVAR(GPTR(char), cv->tapes)[pc[0]];
+        *T = DLLPTR(char, cv->tapes)[pc[0]];
         *P = (int16_t)(*P - *S);
         *A = 0;
         return 1;
     case 0xee: case 0xf0:                   // back to the previous tape
         SETPC(++pc);
-        *T = *DLLVAR(GPTR(char), exec_saved[inst]);
+        *T = *DLLPTR(char, exec_saved[inst]);
         *P = (int16_t)(*P - *S);
         *A = 0;
         return 1;
@@ -281,10 +281,10 @@ uint8_t vm_exec(int inst) {
             int16_t n = ++*nch;
             DLLVAR(int16_t, rv->cpos0)[n] = *A;
             DLLVAR(int16_t, rv->ckind)[n] = 0xf6;
-            DLLVAR(GPTR(char), rv->ctape)[n] = *T;
+            DLLPTR(char, rv->ctape)[n] = *T;
             DLLVAR(int16_t, rv->cpos)[n] = *P;
             tries[n] = c;
-            GPSET(DLLVAR(GPTR(uint8_t), rv->cpc)[n], pc + 1);
+            GPSET(DLLPTR(uint8_t, rv->cpc)[n], pc + 1);
         } else if (c > 1) {
             vm_skip_block(&rule_vm[inst], 0xf6, 0);
             SETPC(GP(uint8_t, *PCv) + 1);
@@ -297,10 +297,10 @@ uint8_t vm_exec(int inst) {
         if (pc[0] != 0) {
             int16_t n = ++*nch;
             DLLVAR(int16_t, rv->cpos0)[n] = *A;
-            DLLVAR(GPTR(char), rv->ctape)[n] = *T;
+            DLLPTR(char, rv->ctape)[n] = *T;
             DLLVAR(int16_t, rv->ckind)[n] = 0xf5;
             DLLVAR(int16_t, rv->cpos)[n] = *P;
-            GPSET(DLLVAR(GPTR(uint8_t), rv->cpc)[n], pc + 1);
+            GPSET(DLLPTR(uint8_t, rv->cpc)[n], pc + 1);
             vm_skip_block(&rule_vm[inst], 0xf5, 0);
             SETPC(GP(uint8_t, *PCv) + 1);
         }
@@ -328,22 +328,22 @@ uint8_t vm_exec(int inst) {
         uint8_t *start = pc - 3;
         tries[n] = 0;
         DLLVAR(int16_t, rv->ckind)[n] = 0xf7;
-        DLLVAR(GPTR(char), rv->ctape)[n] = *T;
-        GPSET(DLLVAR(GPTR(uint8_t), rv->cpc)[n], start);
+        DLLPTR(char, rv->ctape)[n] = *T;
+        GPSET(DLLPTR(uint8_t, rv->cpc)[n], start);
         if (start[1] > 0) {
             do {
                 if (!bl) break;
                 SKIPREAD();
                 int16_t q = *P;
                 tries[n]++;
-                SETPC(GP(uint8_t, DLLVAR(GPTR(uint8_t), rv->cpc)[n]) + 3);
+                SETPC(GP(uint8_t, DLLPTR(uint8_t, rv->cpc)[n]) + 3);
                 if (TC(q) == 0x0e) bl = 0;
                 else bl = (uint8_t)vm_cond(cv, 0xf7, q);
                 n = *nch;
                 int16_t s = *S;
                 *P = (int16_t)(*P + s);
                 *A = s;
-            } while (tries[n] < GP(uint8_t, DLLVAR(GPTR(uint8_t), rv->cpc)[n])[1]);
+            } while (tries[n] < GP(uint8_t, DLLPTR(uint8_t, rv->cpc)[n])[1]);
         }
         n = *nch;
         DLLVAR(int16_t, rv->cpos0)[n] = *A;
@@ -446,7 +446,7 @@ uint8_t vm_run(int inst) {
     const RunVM *vm = &run_vm[inst];
     int16_t *step = DLLVAR(int16_t, vm->step), *nch = DLLVAR(int16_t, vm->nch);
     int16_t *pos0 = DLLVAR(int16_t, vm->pos0), *pos = DLLVAR(int16_t, vm->pos);
-    GPTR(uint8_t) *pc = DLLVAR(GPTR(uint8_t), vm->pc);
+    GPTR(uint8_t) *pc = DLLPTR(uint8_t, vm->pc);
 #define PCP GP(uint8_t, *pc)
     int16_t s = *step;
     GPSET(*pc, PCP + 1);
@@ -468,10 +468,10 @@ backtrack: {
         if (n <= 0) return ok;      // (ok is 0 here)
         uint8_t t = ++DLLVAR(uint8_t, vm->tries)[n];
         *pos = DLLVAR(int16_t, vm->cpos)[n];
-        const uint8_t *at = GP(const uint8_t, DLLVAR(GPTR(uint8_t), vm->cpc)[n]);
+        const uint8_t *at = GP(const uint8_t, DLLPTR(uint8_t, vm->cpc)[n]);
         *pos0 = DLLVAR(int16_t, vm->cpos0)[n];
-        *pc = DLLVAR(GPTR(uint8_t), vm->cpc)[n];
-        *DLLVAR(GPTR(char), vm->cur) = DLLVAR(GPTR(char), vm->ctape)[n];
+        *pc = DLLPTR(uint8_t, vm->cpc)[n];
+        *DLLPTR(char, vm->cur) = DLLPTR(char, vm->ctape)[n];
         switch (DLLVAR(int16_t, vm->ckind)[n]) {
         case 0xf5:
             (*nch)--;
@@ -523,14 +523,14 @@ static int match_test(const CondVM *cv, uint8_t op, uint8_t arg, uint8_t ch) {
 int16_t vm_match(int inst, int32_t at, int32_t back) {
     const CondVM *cv = &cond_vm[inst];
     const MatchVM *mv = &match_vm[inst];
-    GPTR(uint8_t) *PCv = DLLVAR(GPTR(uint8_t), cv->pc);
+    GPTR(uint8_t) *PCv = DLLPTR(uint8_t, cv->pc);
     int16_t *adv = DLLVAR(int16_t, mv->adv);
     uint8_t *chg = DLLVAR(uint8_t, cv->ch);
     int16_t *last = DLLVAR(int16_t, mv->last);
     int16_t pos = (int16_t)at;
     uint32_t cnt = 0;                       // one counter for the whole call, as in the original
     uint8_t *pc = GP(uint8_t, *PCv);
-#define TP() GP(char, *DLLVAR(GPTR(char), cv->cur))
+#define TP() GP(char, *DLLPTR(char, cv->cur))
 #define AT(i) ((uint8_t)TP()[(int16_t)(i)])
 #define SKIP(step) do { if (*adv) while (AT(pos) == 0x7e) pos = (int16_t)(pos + (step)); } while (0)
 #define READ() (*chg = AT(pos))
@@ -650,12 +650,12 @@ int16_t vm_match(int inst, int32_t at, int32_t back) {
             continue;
         }
         case 0xef: case 0xf1:               // switch to tape pc[1]
-            *DLLVAR(GPTR(char), mv->saved) = *DLLVAR(GPTR(char), cv->cur);
-            *DLLVAR(GPTR(char), cv->cur) = DLLVAR(GPTR(char), cv->tapes)[pc[1]];
+            *DLLPTR(char, mv->saved) = *DLLPTR(char, cv->cur);
+            *DLLPTR(char, cv->cur) = DLLPTR(char, cv->tapes)[pc[1]];
             *adv = 0;
             goto next2;
         case 0xee: case 0xf0:               // back to the previous tape
-            *DLLVAR(GPTR(char), cv->cur) = *DLLVAR(GPTR(char), mv->saved);
+            *DLLPTR(char, cv->cur) = *DLLPTR(char, mv->saved);
             *adv = 0;
             goto next2;
         case 0xeb:                          // continue after `back`
@@ -718,8 +718,8 @@ static const ApplyVM apply_vm[3] = {
 uint8_t vm_apply(int inst, int32_t a0, RuleHdr *r) {
     const ApplyVM *av = &apply_vm[inst];
     const RuleVM *vm = &rule_vm[inst];
-    GPTR(uint8_t) *PCv = DLLVAR(GPTR(uint8_t), vm->pc);
-    GPTR(char) *W = DLLVAR(GPTR(char), av->wtape);
+    GPTR(uint8_t) *PCv = DLLPTR(uint8_t, vm->pc);
+    GPTR(char) *W = DLLPTR(char, av->wtape);
     int32_t *cnt = (int32_t *)(void *)((uint8_t *)r - 0x30);
 #define CNT(i) cnt[(uint8_t)TAPE(vm, 0)[(int16_t)(i)]]
     uint8_t ok = 1;
@@ -781,7 +781,7 @@ uint8_t vm_apply(int inst, int32_t a0, RuleHdr *r) {
                 break;
             case 0xef: case 0xf1:
                 GPSET(*PCv, p + 1);
-                *W = DLLVAR(GPTR(char), av->tapes)[p[1]];
+                *W = DLLPTR(char, av->tapes)[p[1]];
                 break;
             case 0xf8:
                 GPSET(*PCv, p + 1);
@@ -837,7 +837,7 @@ uint32_t vm_try(int inst, int32_t a0, int32_t a1, RuleHdr *r, uint32_t prev_eax)
         uint8_t *v = DLLVAR(uint8_t, vm->vars);
         for (uint32_t i = 0; i < vm->nvars; i++) v[i] = 0;
     }
-    *DLLVAR(GPTR(char), vm->cur) = r->tape;
+    *DLLPTR(char, vm->cur) = r->tape;
     return ((uint32_t)GRAW(r->tape) & ~0xffu) | ok;
 }
 
@@ -878,9 +878,9 @@ uint32_t vm_main(int inst, int32_t mode, int32_t s, int16_t *pend) {
     const uint8_t *skip = DLLVAR(const uint8_t, m->skip), *cnt = DLLVAR(const uint8_t, m->cnt);
     const int16_t *offs = DLLVAR(const int16_t, m->offs);
     const uint8_t *codebase = DLLVAR(const uint8_t, m->code);
-    GPTR(uint8_t) *PCv = DLLVAR(GPTR(uint8_t), vm->pc);
+    GPTR(uint8_t) *PCv = DLLPTR(uint8_t, vm->pc);
     int16_t *A = DLLVAR(int16_t, rv->pos0);
-    GPTR(char) *cur = DLLVAR(GPTR(char), m->cur);
+    GPTR(char) *cur = DLLPTR(char, m->cur);
 #define CUR(i) ((uint8_t)GP(char, *cur)[(i)])
 #define SETPC(p) GPSET(*PCv, (uint8_t *)(p))
 #define TRY(k, at) ((uint8_t)vm_try(inst, (int16_t)(k), (int16_t)(at), r, 0))
@@ -892,11 +892,11 @@ uint32_t vm_main(int inst, int32_t mode, int32_t s, int16_t *pend) {
     *pend = (int16_t)(old + 1);
     vm_shift_right(vm, (int16_t)s, old);
     r->len = *pend;
-    GPTR(char) t0 = *DLLVAR(GPTR(char), vm->tape[0]);
+    GPTR(char) t0 = *DLLPTR(char, vm->tape[0]);
     GPTR(char) t0m1;
     GPSET(t0m1, GP(char, t0) - 1);
     r->track = 0;
-    *DLLVAR(GPTR(char), m->wtape) = t0m1;
+    *DLLPTR(char, m->wtape) = t0m1;
     *cur = t0m1;
     r->out = t0m1;
     r->tape = t0m1;
@@ -926,10 +926,10 @@ uint32_t vm_main(int inst, int32_t mode, int32_t s, int16_t *pend) {
         if (typ > 0x64) { typ = (int16_t)(typ - 0x64); *DLLVAR(int16_t, m->typ) = typ; }
         if (typ > 0x63 || typ < 1 || (typ > 16 && typ != 0x63)) continue;
         if (typ == 0x63) {                  // select the tapes the following rules read and write
-            r->tape = DLLVAR(GPTR(char), m->tapes)[code[1]];
+            r->tape = DLLPTR(char, m->tapes)[code[1]];
             *cur = r->tape;
-            r->out = DLLVAR(GPTR(char), m->tapes)[code[2]];
-            *DLLVAR(GPTR(char), m->wtape) = r->out;
+            r->out = DLLPTR(char, m->tapes)[code[2]];
+            *DLLPTR(char, m->wtape) = r->out;
             continue;
         }
         int16_t lo16 = (int16_t)(so + s1);                  // where a forward scan starts

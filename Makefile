@@ -56,3 +56,17 @@ portable-check:
 	$(CC) -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror -fsyntax-only src/*.c
 	@echo "functions the portable build still needs (called through harness/guest.c):"; grep -o '0x636[0-9a-f]\{5\}' harness/guest.c | sort -u | tr '\n' ' '; echo; echo "rule procedures still run as the original:"; grep -o '0x[0-9a-f]*, PROC_GUEST' src/fe_procs.c | cut -d, -f1 | sort -u | tr '\n' ' '; echo
 .PHONY: portable-check
+
+# the portable build, first piece: the main lexicon with the C alone, against the original in the
+# emulator (the word list: the system's, if there is one)
+PORTC = src/fe_vm.c src/fe_procs.c src/fe_lex.c src/fe_rules.c src/vcrt.c src/crt_vc.c
+build/port_lex: port/lex.c port/dllimage.c port/dllimage.h port/lexdump.h $(PORTC) $(wildcard src/*.h)
+	@mkdir -p build
+	$(CC) -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fno-builtin -Isrc -Iport -o $@ port/lex.c port/dllimage.c $(PORTC) -lm
+WORDS ?= /usr/share/dict/words
+port-lex-check: build/port_lex build/unit
+	@head -c 2000000 $(WORDS) | tr 'A-Z' 'a-z' | awk 'NR % 7 == 0' > build/port_words.txt
+	@./build/unit data/msttsl --lexdump < build/port_words.txt > build/port_lex_ref.txt
+	@./build/port_lex data/msttsl < build/port_words.txt > build/port_lex_out.txt
+	@if cmp -s build/port_lex_ref.txt build/port_lex_out.txt; then echo "PORT-LEX: $$(wc -l < build/port_words.txt | tr -d ' ') words, $$(awk -F'\t' '$$2==1' build/port_lex_out.txt | wc -l | tr -d ' ') in the lexicon: portable output identical to the original"; else echo "PORT-LEX: DIFFERENT"; diff build/port_lex_ref.txt build/port_lex_out.txt | head; exit 1; fi
+.PHONY: port-lex-check

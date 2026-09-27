@@ -115,9 +115,9 @@ static const RuleProc rule_procs[3][62] = {
 uint32_t vm_proc(int inst, uint8_t n, int16_t *left, int16_t *len, uint32_t prev_eax);
 // ---- procedures with tape work of their own
 
-#define TP(inst, k) ((uint8_t *)GP(char, *DLLVAR(GPTR(char), rule_vm[inst].tape[k])))
+#define TP(inst, k) ((uint8_t *)GP(char, *DLLPTR(char, rule_vm[inst].tape[k])))
 // machine A's word object (the block the tapes are part of)
-#define WOBJ_A GP(uint8_t, *DLLVAR(GPTR(uint8_t), 0x63739274))
+#define WOBJ_A GP(uint8_t, *DLLPTR(uint8_t, 0x63739274))
 
 // MSVCRT's isdigit in the C locale (the originals test _pctype, __mb_cur_max being 1)
 static int is_digit8(uint8_t c) { return (vc_ctype(c) & 4) != 0; }
@@ -441,7 +441,7 @@ static uint8_t proc_paren_or(int16_t *left, int16_t *len) {
     return 1;
 }
 
-#define T(k) GP(char, *DLLVAR(GPTR(char), rule_vm[inst].tape[k]))
+#define T(k) GP(char, *DLLPTR(char, rule_vm[inst].tape[k]))
 
 uint32_t vm_proc(int inst, uint8_t n, int16_t *left, int16_t *len, uint32_t prev_eax) {
     const RuleProc *p = n < 62 ? &rule_procs[inst][n] : NULL;

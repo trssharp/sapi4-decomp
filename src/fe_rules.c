@@ -1,6 +1,6 @@
 #include "fe_rules.h"
 
-#define TAPE(addr) GP(char, *DLLVAR(GPTR(char), addr))
+#define TAPE(addr) GP(char, *DLLPTR(char, addr))
 
 int tapes_graphic(int16_t lo, int16_t hi) {
     for (int16_t i = lo; i <= hi; i++) {

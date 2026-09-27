@@ -470,7 +470,7 @@ int32_t voc_thread_loop(VocEngine *v) {
                 int wn = (int)strlen(t) + 1;
                 if (wn <= 100) vc_MultiByteToWideChar_cp1252((const uint8_t *)t, wn, w);
                 else memset(w, 0, sizeof w);   // (the original compares stale stack)
-                const ModeTable *mt = GP(const ModeTable, GP(GPTR(const ModeTable), *DLLVAR(GPTR(GPTR(const ModeTable)), 0x63738bc0))[v->mode]);
+                const ModeTable *mt = GP(const ModeTable, GP(GPTR(const ModeTable), *DLLPTR(GPTR(const ModeTable), 0x63738bc0))[v->mode]);
                 for (int32_t i = 1; i <= mt->count; i++) {
                     const uint8_t *mi = GP(const uint8_t, GP(GPTR(const uint8_t), mt->modes)[i]);   // (through 0x6367ddfb, the identity)
                     if (vc_wcsicmp(w, (const uint16_t *)(const void *)(mi + 0x90c)) == 0) {

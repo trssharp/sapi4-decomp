@@ -35,7 +35,7 @@ int free_if(void *p) {
 int is_digit_char(char c) { return (signed char)c >= '0' && (signed char)c <= '9'; }
 uint16_t char_class16(uint16_t c) { return DLLVAR(const uint16_t, 0x636c8080)[c]; }
 void freelist_push(FreeNode *n) {
-    GPTR(FreeNode) *head = DLLVAR(GPTR(FreeNode), 0x63738c9c);
+    GPTR(FreeNode) *head = DLLPTR(FreeNode, 0x63738c9c);
     n->next = *head;
     GPSET(*head, n);
 }
