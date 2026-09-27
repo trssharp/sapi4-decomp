@@ -5,6 +5,8 @@
 #include "fe_small.h"
 #include "crt_vc.h"
 #include "vcrt.h"
+#include "x87.h"
+#include <math.h>
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -916,4 +918,31 @@ int32_t user_lex_word(char *word, GPTR(char) *out) {
     GPSET(*out, res);
     vc_free(codes);
     return 1;
+}
+
+// ------------------------------------------------------------------ continuing and settings
+
+int32_t words_continue(int32_t idx, int32_t *consumed, int32_t *last) {
+    GPTR(WordInput) *slot = DLLPTR(WordInput, 0x63738968) + idx;
+    if (GP(WordInput, *slot)->out[0]) {
+        vc_free(GP(char, GP(WordInput, *slot)->out[0]));
+        GP(WordInput, *slot)->out[0] = 0;
+    }
+    for (int k = 1; k < 9; k++) vc_free(GP(char, GP(WordInput, *slot)->out[k]));
+    WordInput *in = GP(WordInput, *slot);
+    in->len = (int32_t)(GP(char, in->wr) - GP(char, in->rd));
+    vc_EnterCriticalSection(DLLVAR(uint8_t, 0x63738b90));
+    int32_t r = word_dispatch(idx, GP(char, in->rd), &in->len, in->flag);
+    vc_LeaveCriticalSection(DLLVAR(uint8_t, 0x63738b90));
+    in = GP(WordInput, *slot);
+    *consumed = (int32_t)(GP(char, in->rd) - GP(char, in->buf));
+    *last = in->len + *consumed - 1;
+    return r;
+}
+
+void words_set_pitch(int32_t idx, int32_t hz) {
+    WordInput *in = GP(WordInput, DLLPTR(WordInput, 0x63738968)[idx]);
+    in->pitch_hz = hz;
+    double a = log((double)hz * 0.02) * 48.0;
+    in->pitch = x87_ftol(a / log(2.0));
 }

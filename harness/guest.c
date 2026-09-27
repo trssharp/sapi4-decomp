@@ -86,12 +86,6 @@ uint8_t vm_proc_guest(int inst, uint8_t n, int16_t *left, int16_t *len) {
     return (uint8_t)guest_call(fn, 2, a);
 }
 
-int32_t fe_after_feed(FrontEnd *fe, int32_t r) {
-    uint32_t args[1] = { (uint32_t)r };
-    emu_cpu(decomp_emu)->s.r[ECX] = host_to_guest_ptr(fe);
-    return (int32_t)guest_call(0x63680c6e, 1, args);
-}
-
 int32_t text_from_other(char *text, GPTR(char) *out) {
     X86 *c = emu_cpu(decomp_emu);
     uint32_t sp = c->s.r[ESP];

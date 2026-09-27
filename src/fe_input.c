@@ -2,6 +2,8 @@
 #include "fe_small.h"
 #include "fe_split.h"
 #include "tags.h"
+#include "queue.h"
+#include "voice.h"
 #include "crt_vc.h"
 #include "vcrt.h"
 #include "x87.h"
@@ -420,3 +422,152 @@ int32_t phonemes_to_names(const uint16_t *text, GPTR(uint16_t) *out, int32_t tag
 }
 
 int32_t free_if2(void *p) { return free_if(p); }
+
+// ------------------------------------------------------------------ after the word module read a part
+
+// an escape's letter at *p, then its argument up to and including the space after it into buf (as the
+// original does it: nothing is written when the escape has no argument); where it stopped
+static char *esc_arg(char *p, char *buf) {
+    char c = *p;
+    if (!c) return p;
+    int k = 0;
+    while (c != ' ') {
+        c = *++p;
+        buf[k] = c;
+        buf[k + 1] = 0;
+        c = *p;
+        k++;
+        if (!c) break;
+    }
+    return p;
+}
+
+int32_t tag_char_value(const char *name) {
+    for (int i = 0; i < 17; i++)
+        if (vc_lstrcmpiA(name, GP(const char, DLLPTR(const char, 0x6371f378)[2 * i])) == 0)
+            return DLLVAR(const int32_t, 0x6371f37c)[2 * i];
+    return (int32_t)0x80000000u;
+}
+
+uint32_t voice_rec_count(const uint8_t *v) { return *(const uint32_t *)(const void *)(v + 0xb18); }
+
+const uint8_t *voice_rec(const uint8_t *v, uint32_t i, int32_t *key, int32_t *len) {
+    const uint8_t *r = v + 0xb1c;
+    for (; i; i--) r += *(const int32_t *)(const void *)(r + 4) + 8;
+    *key = *(const int32_t *)(const void *)r;
+    *len = *(const int32_t *)(const void *)(r + 4);
+    return r + 8;
+}
+
+void fe_voice_flags(FrontEnd *fe, int32_t v) {
+    if (v == 0) {
+        fe->flags &= ~0x100u;
+        return;
+    }
+    const ModeTable *mt = GP(const ModeTable, GP(GPTR(const ModeTable), *DLLPTR(GPTR(const ModeTable), 0x63738bc0))[fe->voice]);
+    const uint8_t *d = GP(const uint8_t, GP(GPTR(const uint8_t), mt->modes)[v]);
+    uint32_t n = voice_rec_count(d);
+    for (uint32_t i = 0; i < n; i++) {
+        int32_t key, len;
+        voice_rec(d, i, &key, &len);
+        if ((key & 0xffffff) == 5) fe->flags |= 0x100u;
+    }
+}
+
+int32_t fe_text_end(FrontEnd *fe) {
+    fe->pitch_set = fe->pitch;
+    words_set_pitch(fe->words, fe->pitch);
+    vc_PostMessageA(fe->hwnd, fe->msg, 1, 0);
+    return 0;
+}
+
+int32_t fe_after_feed(FrontEnd *fe, int32_t r) {
+    // the original's 20-byte buffer with its "only escapes" flag right after it (a longer argument
+    // runs into the flag, as there)
+    uint8_t frame[0x100];
+    memset(frame, 0, sizeof frame);
+    char *buf = (char *)frame;
+    int32_t one = 1;
+    memcpy(frame + 0x14, &one, 4);
+    char *cur = GP(char, fe->cur);
+    char *p = cur + fe->f28, *last = cur + fe->f2c;
+    if (last > GP(char, fe->next)) last = GP(char, fe->next);
+    fe->nindex = 0;
+    if (*last == 0) last--;
+    while (p <= last) {
+        char c = *p;
+        if (c == ' ' || c == '\r') {
+            p++;
+            continue;
+        }
+        if (c == 0x1b) {
+            char letter = *++p;
+            p = esc_arg(p, buf);
+            if (letter == 'N') {
+                if (fe->nindex == 0) fe->first_index = vc_atoi(buf);
+                fe->nindex++;
+            }
+            continue;
+        }
+        memset(frame + 0x14, 0, 4);
+        while (c && c != ' ' && c != 0x1b) c = *++p;
+    }
+    int32_t ok;
+    memcpy(&ok, frame + 0x14, 4);
+    if (ok == 0 && r != 0x6f) return 0x70;
+    p = cur + fe->f28;
+    for (;;) {
+        char c = *p;
+        if (!c) return 0x6f;
+        if (c != 0x1b) {
+            p++;
+            continue;
+        }
+        char letter = *++p;
+        p = esc_arg(p, buf);
+        if (letter == 'I') {
+            if (vc_lstrcmpA(buf, DLLVAR(const char, 0x6371da14)) == 0) fe_text_end(fe);     // "0"
+            continue;
+        }
+        if (letter != 'N') continue;
+        int32_t idx = vc_atoi(buf);
+        TagOut *t = vc_malloc(0x14);
+        if (!t) continue;
+        memset(t, 0, 0x14);
+        FeEntry *e = &GP(FeEntry, fe->entries)[idx];
+        const char *fmt = NULL;
+        switch (e->type) {
+        case 0: {
+            int32_t v = tag_char_value(GP(const char, e->text));
+            if (v == 0) {
+                fe->flags = 0;
+                if (fe->f50 < 0) fe_voice_flags(fe, -fe->f50);
+            } else if (v == 0x100) fe->flags |= 0x100u;
+            fmt = DLLVAR(const char, 0x6371f1fc);       // "\Chr=%s\\n"
+            break;
+        }
+        case 1: fmt = DLLVAR(const char, 0x6371f208); break;       // "\Wrd=%s\\n"
+        case 9: fmt = DLLVAR(const char, 0x6371f1f0); break;       // "\Mrk=%s\\n"
+        case 0xa: fmt = DLLVAR(const char, 0x6371f1b8); break;     // "\Pau=%s\\n"
+        case 0xb: fmt = DLLVAR(const char, 0x6371f1c4); break;     // "\Pit=%s\\n"
+        case 0xf:
+            sprintf(buf, "%s", DLLVAR(const char, 0x6371f1d0));    // "\Rst\\n"
+            fe->flags = 0;
+            if (fe->f50 < 0) fe_voice_flags(fe, -fe->f50);
+            break;
+        case 0x10: fmt = DLLVAR(const char, 0x6371f1d8); break;    // "\Spd=%s\\n"
+        case 0x12: fmt = DLLVAR(const char, 0x6371f1e4); break;    // "\Vol=%s\\n"
+        default: break;         // (the escape's own argument is parsed as the tag)
+        }
+        if (fmt) sprintf(buf, fmt, GP(const char, GP(FeEntry, fe->entries)[idx].text));
+        tag_parse(buf, t);
+        queue_push(GP(Queue, fe->queue), (const QItem *)(const void *)t);
+        vc_free(t);
+    }
+}
+
+int32_t fe_continue(FrontEnd *fe) {
+    int32_t r = words_continue(fe->words, &fe->f28, &fe->f2c);
+    if (GP(char, fe->cur)[fe->f28] == 0) return 0x6f;
+    return fe_after_feed(fe, r);
+}

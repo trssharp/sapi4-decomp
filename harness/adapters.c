@@ -646,3 +646,12 @@ void hk_phones_to_codes(Emu *e, X86 *c) { E_RET(host_to_guest(phones_to_codes(GS
 void hk_lex_entry_cmp(Emu *e, X86 *c) { E_RET((uint32_t)lex_entry_cmp(GPH(uint32_t, A(0), 4), GPH(uint32_t, A(1), 4))); }
 void hk_user_lex_find(Emu *e, X86 *c) { E_RET(user_lex_find(GSTR(A(0)), GPH(UserLex, A(1), sizeof(UserLex)))); }
 void hk_user_lex_word(Emu *e, X86 *c) { E_RET((uint32_t)user_lex_word(GSTR(A(0)), GPH(uint32_t, A(1), 4))); }
+void hk_words_continue(Emu *e, X86 *c) { E_RET((uint32_t)words_continue(AI(0), GPH(int32_t, A(1), 4), GPH(int32_t, A(2), 4))); }
+void hk_words_set_pitch(Emu *e, X86 *c) { words_set_pitch(AI(0), AI(1)); }
+void hk_fe_after_feed(Emu *e, X86 *c) { E_RET((uint32_t)fe_after_feed(THIS(FrontEnd), AI(0))); }
+void hk_fe_continue(Emu *e, X86 *c) { E_RET((uint32_t)fe_continue(THIS(FrontEnd))); }
+void hk_tag_char_value(Emu *e, X86 *c) { E_RET((uint32_t)tag_char_value(GSTR(A(0)))); }
+void hk_fe_voice_flags(Emu *e, X86 *c) { fe_voice_flags(THIS(FrontEnd), AI(0)); }
+void hk_fe_text_end(Emu *e, X86 *c) { E_RET((uint32_t)fe_text_end(THIS(FrontEnd))); }
+void hk_voice_rec(Emu *e, X86 *c) { E_RET(host_to_guest(voice_rec(GPH(uint8_t, A(0), 0xb20), A(1), GPH(int32_t, A(2), 4), GPH(int32_t, A(3), 4)))); }
+void hk_voice_rec_count(Emu *e, X86 *c) { E_RET(voice_rec_count(GPH(uint8_t, A(0), 0xb1c))); }

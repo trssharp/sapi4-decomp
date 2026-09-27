@@ -22,8 +22,12 @@ typedef struct WordInput {
     GPTR(char) rd;          // 0x08
     GPTR(char) wr;          // 0x0c
     int32_t len;            // 0x10
-    uint8_t _14[0x28];
+    GPTR(char) out[9];      // 0x14 per-phrase results (malloc)
+    int32_t _38;
     int32_t flag;           // 0x3c
+    int32_t pitch;          // 0x40 12 * 4 * log2(pitch_hz / 50)
+    uint8_t _44[0xf668 - 0x44];
+    int32_t pitch_hz;       // 0xf668
 } WordInput;
 
 // events on the word object's list (a failure to allocate is -1; an event type the object does not
@@ -46,6 +50,8 @@ int32_t rd_close_word(int32_t start, int32_t *end);     // @0x63689bc0 stdcall
 int32_t word_run(uint8_t *w, char *text, int32_t *len, int32_t flag);   // @0x63689357 cdecl
 int32_t word_dispatch(int32_t idx, char *text, int32_t *len, int32_t flag);  // @0x63688b27 cdecl
 int32_t words_feed(int32_t idx, char *text, int32_t *consumed, int32_t *last);  // @0x63677575 stdcall
+int32_t words_continue(int32_t idx, int32_t *consumed, int32_t *last);  // @0x636779a5 stdcall
+void words_set_pitch(int32_t idx, int32_t hz);          // @0x63677af9 stdcall
 
 // the user lexicon
 uint8_t phone_code(const char *name);                  // @0x63675fb5 stdcall

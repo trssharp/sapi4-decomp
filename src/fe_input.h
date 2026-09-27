@@ -14,22 +14,31 @@ typedef struct FeEntry {
 
 // the front end object (only the fields the text input uses)
 typedef struct FrontEnd {
-    uint8_t _00[0x0c];
+    uint32_t _00;
+    uint32_t msg;           // 0x04 the message posted at the end of the text
+    uint32_t hwnd;          // 0x08 ... to this window
     GPTR(FeEntry) entries;  // 0x0c
     int32_t cap;            // 0x10
     int32_t last;           // 0x14 index of the last entry, -1 when none
-    uint8_t _18[0x0c];
+    uint32_t _18;
+    int32_t nindex;         // 0x1c index escapes seen in the part just read
+    uint32_t _20;
     int32_t words;          // 0x24 the word module's voice index
-    int32_t f28;            // 0x28
-    int32_t f2c;            // 0x2c
-    uint8_t _30[4];
+    int32_t f28;            // 0x28 where the word module stopped (offset from cur)
+    int32_t f2c;            // 0x2c its last character
+    int32_t first_index;    // 0x30 the first index escape in that part
     GPTR(char) text;        // 0x34 the prepared text (malloc)
     GPTR(char) text_last;   // 0x38 its last character
     GPTR(char) cur;         // 0x3c where the word module is reading
     GPTR(char) next;        // 0x40 the next index escape ("\x1bI"), cut off with a NUL
-    uint8_t _44[4];
+    uint32_t flags;         // 0x44 0x100: an emphasis voice
     int32_t addr_mode;      // 0x48 2 inside an address tag
-    uint8_t _4c[0x3c];
+    int32_t voice;          // 0x4c
+    int32_t f50;            // 0x50 < 0: a voice variant to check (negated)
+    uint32_t _54[10];
+    GPTR(uint8_t) queue;    // 0x7c the output queue (queue.h)
+    int32_t pitch;          // 0x80
+    int32_t pitch_set;      // 0x84
     int32_t single_char;    // 0x88 the text was one character (spoken as its name)
 } FrontEnd;
 
@@ -54,6 +63,16 @@ int32_t phonemes_to_names(const uint16_t *text, GPTR(uint16_t) *out, int32_t tag
 int32_t phoneme_index(uint16_t c);                                      // @0x63674978 stdcall
 int32_t free_if2(void *p);                                              // @0x6367499a stdcall, as free_if
 
+// @0x63680c6e thiscall: after the word module read a part: the first index escape in it, and (from
+// where it stopped) the tags the index escapes stand for, queued as tags for the back end; r (0x6f at
+// the end of the text), or 0x70 when the part held only escapes
+int32_t fe_after_feed(FrontEnd *fe, int32_t r);
+int32_t fe_continue(FrontEnd *fe);                                      // @0x63680c3f thiscall
+int32_t tag_char_value(const char *name);                               // @0x63680ecd stdcall
+void fe_voice_flags(FrontEnd *fe, int32_t v);                           // @0x63683653 thiscall
+int32_t fe_text_end(FrontEnd *fe);                                      // @0x63683765 thiscall
+// @0x6367de02 stdcall: record i of a mode description (from +0xb1c: key, length, data); its data
+const uint8_t *voice_rec(const uint8_t *v, uint32_t i, int32_t *key, int32_t *len);
+uint32_t voice_rec_count(const uint8_t *v);                             // @0x6367de34 stdcall
 // not decompiled yet (harness/guest.c)
-int32_t fe_after_feed(FrontEnd *fe, int32_t r);                         // @0x63680c6e thiscall
 int32_t text_from_other(char *text, GPTR(char) *out);                   // @0x636744c4 stdcall
