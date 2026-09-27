@@ -3,7 +3,7 @@
 # hooked over the original functions and must leave the golden corpus bit-identical.
 CC ?= clang
 # -ffp-contract=off: no fused multiply-add, so double arithmetic rounds exactly like the emulator's x87
-CFLAGS ?= -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -ffp-contract=off
+CFLAGS ?= -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fno-builtin -DDECOMP_HOOK
 EMU = emu/x86.c emu/emu.c emu/crt.c emu/winapi.c emu/ole.c emu/registry.c emu/sapi4_tts.c
 DECOMP = $(wildcard src/*.c)
 HOOKS = harness/hooks.c harness/hooktab.c harness/adapters.c
@@ -21,7 +21,7 @@ build/unit: $(DECOMP) $(HOOKS) $(EMU) harness/unit.c $(HDR)
 
 build/sapi4_lockstep: $(EMU) $(DECOMP) $(HOOKS) emu/sapi4_speak.c emu/lockstep.c $(HDR)
 	@mkdir -p build
-	$(CC) -std=c11 -O1 -g -ffp-contract=off -DX86_LOCKSTEP -Iemu -Isrc -Iharness -I/opt/homebrew/include -o $@ $(EMU) $(DECOMP) $(HOOKS) emu/sapi4_speak.c emu/lockstep.c -L/opt/homebrew/lib -lunicorn -lm
+	$(CC) -std=c11 -O1 -g -ffp-contract=off -fno-builtin -DDECOMP_HOOK -DX86_LOCKSTEP -Iemu -Isrc -Iharness -I/opt/homebrew/include -o $@ $(EMU) $(DECOMP) $(HOOKS) emu/sapi4_speak.c emu/lockstep.c -L/opt/homebrew/lib -lunicorn -lm
 
 # oracle checks: reference WAVs from tetyys.com + 46 golden renders, with every hook enabled
 check: build/sapi4_speak

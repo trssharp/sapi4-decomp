@@ -5,13 +5,14 @@
 #include "fft.h"
 #include "lpc.h"
 #include "codec.h"
+#include "effect.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
 #define AI(i) ((int32_t)x86_arg(c, (i)))
 static inline float argf(X86 *c, int i) { uint32_t u = x86_arg(c, i); float f; memcpy(&f, &u, 4); return f; }
 // host pointer to n elements of guest memory at a (NULL when n <= 0: the function never dereferences it)
-#define PTR(T, a, n) ((n) > 0 ? GP(T, (a), (uint32_t)(n) * sizeof(T)) : (T *)NULL)
+#define PTR(T, a, n) ((n) > 0 ? GPH(T, (a), (uint32_t)(n) * sizeof(T)) : (T *)NULL)
 // host pointer to guest a, checking the element range [lo, hi) the function touches (may be negative)
 static void *span(X86 *c, uint32_t a, long lo, long hi, uint32_t es) {
     if (hi <= lo) return c->mem + a;
@@ -83,7 +84,7 @@ static void halves(X86 *c, int add) {
 void hk_dsp_place_halves(Emu *e, X86 *c) { halves(c, 0); }
 void hk_dsp_add_halves(Emu *e, X86 *c) { halves(c, 1); }
 void hk_dsp_cmp_float(Emu *e, X86 *c) {
-    E_RET(dsp_cmp_float(GP(float, A(0), 4), GP(float, A(1), 4)));
+    E_RET(dsp_cmp_float(GPH(float, A(0), 4), GPH(float, A(1), 4)));
 }
 void hk_dsp_sort_floats(Emu *e, X86 *c) {
     int n = AI(1);
@@ -116,4 +117,28 @@ void hk_codec_bytes_to_floats(Emu *e, X86 *c) {
     // the escapes make the byte extent data dependent: check the start, then walk
     const int8_t *p = (const int8_t *)x86_ptr(c, A(0), 1);
     E_RET(codec_bytes_to_floats(p, n, PTR(float, A(2), n), AI(3)));
+}
+
+// thiscall: `this` in ECX
+#define THIS(T) GPH(T, c->s.r[ECX], sizeof(T))
+void hk_effect_db_to_gain(Emu *e, X86 *c) { x86_fpu_push(c, effect_db_to_gain(THIS(Effect), argf(c, 0))); }
+void hk_effect_gain_copy(Emu *e, X86 *c) {
+    uint32_t n = A(2);
+    effect_gain_copy(THIS(Effect), PTR(float, A(0), n), PTR(float, A(1), n), n, argf(c, 3));
+}
+void hk_effect_mix_clip(Emu *e, X86 *c) {
+    uint32_t n = A(2);
+    effect_mix_clip(THIS(Effect), PTR(float, A(0), n), PTR(float, A(1), n), n, argf(c, 3));
+}
+void hk_effect_allpass(Emu *e, X86 *c) {
+    uint32_t n = A(1);
+    effect_allpass(THIS(Effect), GPH(Allpass, A(0), sizeof(Allpass)), n, PTR(float, A(2), n), PTR(float, A(3), n));
+}
+void hk_effect_chain(Emu *e, X86 *c) {
+    int n = AI(1);
+    effect_chain(THIS(Effect), PTR(float, A(0), n), n, GPH(uint32_t, A(2), 20));
+}
+void hk_effect_process(Emu *e, X86 *c) {
+    int n = AI(1);
+    effect_process(THIS(Effect), PTR(float, A(0), n), n);
 }

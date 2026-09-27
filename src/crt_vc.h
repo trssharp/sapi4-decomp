@@ -5,3 +5,6 @@
 // qsort exactly as the VC CRT does it (median-less quicksort, shortsort below 9 elements): elements
 // that compare equal end up where the original put them.
 void vc_qsort(void *base, size_t num, size_t width, int (*cmp)(const void *, const void *));
+// rand() as MSVCRT has it (per-thread state, seed 1): the effects' RoboSoft warble depends on the
+// exact sequence. In the hook build this advances the calling guest thread's own state.
+int vc_rand(void);

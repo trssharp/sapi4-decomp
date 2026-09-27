@@ -9,6 +9,7 @@
 #include "fft.h"
 #include "lpc.h"
 #include "codec.h"
+#include "effect.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -203,6 +204,118 @@ static void t_period(int iter) {
     check("codec_bytes_to_floats", iter, "out", gp(go, 4u * n), o, 4u * n);
 }
 
+// Functions on structs with pointer fields: run the original, save the regions it may touch, restore
+// them, run the C version on the same guest memory, compare.
+typedef struct { uint32_t a, n; uint8_t *save, *orig; } Region;
+static Region regs[64];
+static int nregs;
+static void reg_add(uint32_t a, uint32_t n) { regs[nregs++] = (Region){ a, n, malloc(n), malloc(n) }; memcpy(regs[nregs - 1].orig, gp(a, n), n); }
+static void reg_save(void) { for (int i = 0; i < nregs; i++) { memcpy(regs[i].save, gp(regs[i].a, regs[i].n), regs[i].n); memcpy(gp(regs[i].a, regs[i].n), regs[i].orig, regs[i].n); } }
+static void reg_check(const char *fn, int iter) {
+    for (int i = 0; i < nregs; i++) {
+        char what[32]; snprintf(what, sizeof what, "region %d", i);
+        check(fn, iter, what, regs[i].save, gp(regs[i].a, regs[i].n), regs[i].n);
+        free(regs[i].save); free(regs[i].orig);
+    }
+    nregs = 0;
+}
+static uint32_t thiscall(uint32_t pref, uint32_t self, int nargs, const uint32_t *args) {
+    C->s.r[ECX] = self;
+    return call(pref, nargs, args);
+}
+
+static void t_effect(int iter) {
+    // an Effect and two allpass stages in guest memory, with random state
+    uint32_t ge = galloc(sizeof(Effect)), gpre = galloc(sizeof(EffectPreset));
+    Effect *ef = gp(ge, sizeof(Effect));
+    EffectPreset *pr = gp(gpre, sizeof(EffectPreset));
+    memset(ef, 0, sizeof *ef); memset(pr, 0, sizeof *pr);
+    pr->warble = (iter & 1) ? 0.4f : 0.0f;
+    ef->chunk = rndi(16, 300);
+    ef->send = (iter % 4 == 0) ? 1.0f : (iter % 4 == 1) ? 0.0f : 0.7f;
+    ef->dry = (iter % 3 == 0) ? 1.0f : 0.6f;
+    ef->rnd = (float)(rnd() % 32768) * 0.000244140625f;
+    ef->shrink = 1.0f - ((iter & 1) ? 0.4f : 0.0f) * ef->rnd;
+    GPSET(ef->preset, gp(gpre, 1));
+    int ncoef = (iter % 3 == 2) ? rndi(1, 4) : 0;
+    ef->ncoef = ncoef;
+    uint32_t gcoef = galloc(4u * 8);
+    for (int i = 0; i < 8; i++) ((float *)gp(gcoef, 32))[i] = rndf() * 0.1f;
+    ef->coef = gcoef;
+    int nst = rndi(0, 5);
+    ef->nstages = nst;
+    uint32_t gst[5] = { 0 }, gbuf[5] = { 0 }, gfir[5] = { 0 };
+    for (int k = 0; k < nst; k++) {
+        gst[k] = galloc(sizeof(Allpass));
+        Allpass *ap = gp(gst[k], sizeof(Allpass));
+        int len = rndi(8, 400);
+        gbuf[k] = galloc(4u * len);
+        for (int i = 0; i < len; i++) ((float *)gp(gbuf[k], 4u * len))[i] = rndf();
+        gfir[k] = galloc(4u * 8);
+        for (int i = 0; i < 8; i++) ((float *)gp(gfir[k], 32))[i] = rndf();
+        ap->gain = (float)(rnd() % 1000) / 1000.0f;
+        ap->len = ap->delay = len;
+        ap->buf = gbuf[k]; ap->end = gbuf[k] + 4u * len;
+        ap->wr = gbuf[k] + 4u * (uint32_t)rndi(0, len - 1);
+        ap->rd = gbuf[k] + 4u * (uint32_t)rndi(0, len - 1);
+        ap->fir = gfir[k];
+        ef->stage[k] = gst[k];
+    }
+    int n = rndi(0, 700);
+    uint32_t gx = farr(h1, n > 0 ? n : 1);
+    for (int i = 0; i < (n > 0 ? n : 1); i++) { h1[i] *= 20000.0f; ((float *)gp(gx, 4))[i] = h1[i]; }
+    uint32_t gsc = galloc(4u * 300);
+    ef->scratch = gsc;
+    // effect_process (the whole chain), then the pieces through their own entry points
+    reg_add(ge, sizeof(Effect)); reg_add(gx, 4u * (n > 0 ? n : 1)); reg_add(gsc, 1200);
+    for (int k = 0; k < nst; k++) { Allpass *ap = gp(gst[k], sizeof(Allpass)); reg_add(gst[k], sizeof(Allpass)); reg_add(gbuf[k], 4u * ap->len); reg_add(gfir[k], 32); }
+    uint32_t seed = E->cur->rand_seed;
+    uint32_t a[5] = { gx, (uint32_t)n };
+    thiscall(0x63680189, ge, 2, a);
+    uint32_t seed_after = E->cur->rand_seed;
+    reg_save();
+    E->cur->rand_seed = seed;
+    effect_process(ef, gp(gx, 4), n);
+    check("effect_process", iter, "rand state", &seed_after, &E->cur->rand_seed, 4);
+    reg_check("effect_process", iter);
+    if (nst > 0) {
+        Allpass *ap = gp(gst[0], sizeof(Allpass));
+        int m = rndi(0, 500);
+        uint32_t gi = farr(h2, m > 0 ? m : 1), go = farr(h3, m > 0 ? m : 1);
+        reg_add(gst[0], sizeof(Allpass)); reg_add(gbuf[0], 4u * ap->len); reg_add(gfir[0], 32); reg_add(go, 4u * (m > 0 ? m : 1));
+        uint32_t b[4] = { gst[0], (uint32_t)m, gi, go };
+        thiscall(0x63680036, ge, 4, b);
+        reg_save();
+        effect_allpass(ef, ap, (uint32_t)m, gp(gi, 4), gp(go, 4));
+        reg_check("effect_allpass", iter);
+    }
+    // gain_copy, mix_clip, db_to_gain
+    {
+        int m = rndi(0, 300);
+        float g = (iter % 5 == 0) ? 1.0f : (iter % 5 == 1) ? 0.0f : (iter % 5 == 2) ? -1.0f : rndf();
+        uint32_t gs = farr(h2, m > 0 ? m : 1), gd = farr(h3, m > 0 ? m : 1);
+        for (int i = 0; i < m; i++) { h2[i] *= 30000.0f; ((float *)gp(gs, 4))[i] = h2[i]; }
+        reg_add(gd, 4u * (m > 0 ? m : 1));
+        uint32_t b[4] = { gd, gs, (uint32_t)m, fbits(g) };
+        thiscall(0x6367ff1d, ge, 4, b);
+        reg_save();
+        effect_gain_copy(ef, gp(gd, 4), gp(gs, 4), (uint32_t)m, g);
+        reg_check("effect_gain_copy", iter);
+        reg_add(gd, 4u * (m > 0 ? m : 1));
+        uint32_t b2[4] = { gs, gd, (uint32_t)m, fbits(g) };
+        thiscall(0x6367ff87, ge, 4, b2);
+        reg_save();
+        effect_mix_clip(ef, gp(gs, 4), gp(gd, 4), (uint32_t)m, g);
+        reg_check("effect_mix_clip", iter);
+        float db = (float)rndi(-130, 20) + ((iter & 1) ? 0.5f : 0.0f);
+        uint32_t b3[1] = { fbits(db) };
+        thiscall(0x6367fbfe, ge, 1, b3);
+        double g1 = x86_fpu_pop(C), g2 = effect_db_to_gain(ef, db);
+        if (memcmp(&g1, &g2, 8)) fprintf(stderr, "db %.9g: guest %.17g native %.17g\n", db, g1, g2);
+        checkd("effect_db_to_gain", iter, g1, g2);
+    }
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -214,6 +327,8 @@ int main(int argc, char **argv) {
     if (!emu_host_path(E, "C:\\SPEECH\\msttssyn.dll", host, sizeof host, 1)) { fprintf(stderr, "no msttssyn.dll\n"); return 2; }
     M = emu_load_pe(E, host, "C:\\SPEECH\\msttssyn.dll", EMU_IMAGE_BASE);
     if (!M || !emu_dll_attach(E, M)) { fprintf(stderr, "load failed: %s\n", emu_error(E)); return 2; }
+    decomp_guest_mem = C->mem;
+    decomp_emu = E;
     for (int it = 0; it < iters; it++) {
         t_filter(0, it); t_filter(1, it); t_filter(2, it);
         t_vec(it);
@@ -221,6 +336,7 @@ int main(int argc, char **argv) {
         t_fft(it);
         t_lpc(it);
         t_period(it);
+        t_effect(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
     printf("unit: %d checks, %d mismatches\n", cases, fails);

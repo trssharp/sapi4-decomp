@@ -4,6 +4,15 @@
 #include <string.h>
 
 uint32_t decomp_load_delta;
+_Thread_local uint8_t *decomp_guest_mem;
+_Thread_local Emu *decomp_emu;
+
+// MSVCRT rand() on the calling guest thread's own state (exactly what the emulator's CRT does)
+int vc_rand(void) {
+    Thread *t = decomp_emu->cur;
+    t->rand_seed = t->rand_seed * 214013u + 2531011u;
+    return (int)((t->rand_seed >> 16) & 0x7FFF);
+}
 
 static int selected(const char *list, const char *name) {
     if (!list || !*list || !strcmp(list, "all")) return 1;
@@ -24,6 +33,8 @@ int decomp_install_hooks(Emu *e, uint32_t load_base, uint32_t pref_base) {
     list = getenv("SAPI4_HOOKS");
 #endif
     decomp_load_delta = load_base - pref_base;
+    decomp_guest_mem = emu_cpu(e)->mem;
+    decomp_emu = e;
     int n = 0;
     for (int i = 0; i < decomp_nhooks; i++) {
         const DecompHook *h = &decomp_hooks[i];

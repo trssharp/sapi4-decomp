@@ -45,3 +45,11 @@ recurse:;
     --sp;
     if (sp >= 0) { lo = lostk[sp]; hi = histk[sp]; goto recurse; }
 }
+
+#ifndef DECOMP_HOOK
+static _Thread_local uint32_t vc_seed = 1;
+int vc_rand(void) {
+    vc_seed = vc_seed * 214013u + 2531011u;
+    return (int)((vc_seed >> 16) & 0x7fff);
+}
+#endif
