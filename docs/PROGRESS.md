@@ -17,7 +17,7 @@ DLL keeps running around it) and must leave the output bit-identical:
 
 All three pass with every hook enabled. `SAPI4_HOOKS=none` gives the untouched original.
 
-## Where this stands (session 5, 2026-09-27)
+## Where this stands (end of session 5, 2026-09-27)
 
 Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`):
 
@@ -25,19 +25,28 @@ Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability
 |---|---|---|
 | static function list (excl. 73 import stubs; approximate) | ~1,000 | ~185,000 of .text 184,302 (boundaries approximate) |
 | reached by the corpus | 536 | 145,161 |
-| **decompiled and verified** | **445** (391 reached, 54 reached only by the unit tests) | **122,604** |
-| share of the reached set | 72.9% | 80.8% |
-| share of all guest instructions executed | | 98.7% |
+| **decompiled and verified** | **499** (441 reached, 58 reached only by the unit tests) | **139,247** |
+| share of the reached set | 82.3% | 92.1% |
+| share of all guest instructions executed | | 100.0% (rounded; what is left runs a few thousand instructions per render) |
 
-Session 5 added 146 functions (47.2 KB): **the whole front end except one unused prosody mode** - the
-text input (wide text to single-byte, SAPI tags into the engine's escape sequences, line breaks,
-sentence splitting with its lexer), the word module's reader (escapes into events, user lexicon,
-phrase breaks, setjmp/longjmp error unwinding), machine A's per-phrase driver (durations, segments,
-pitch), the phrase output (phone list for the unit stage, index escapes back into tags, the "\Tp"
-phone converter path), the front-end thread, and its set-up (word objects, user lexicons, the front
-end object). And the second portable piece: **`make port-fe-check` runs text to phone lists with the
-C alone** - identical to the original front end on 62 texts over six voices (10,938 phones), with the
-DLL's data loaded at run time or baked in (`make port-fe-baked-check`). See "Done, session 5".
+**The portable build now speaks.** `make port-render-check` runs `build/port_render` - no emulator,
+no x86: the voices enumerated from the directory's .vce/.cfg files, a mode set up as the engine object
+does it, and the front end, unit stage and synthesizer run on their queues one after another - and
+all **38 golden renders (19 modes x 2 texts) come out bit for bit identical** to the original's.
+`make port-render-baked-check` does the same with the DLL's data compiled in.
+
+Session 5 added 200 functions (63.8 KB). First part: **the whole front end except one unused prosody
+mode** - the text input (wide text to single-byte, SAPI tags into the engine's escape sequences, line
+breaks, sentence splitting with its lexer), the word module's reader (escapes into events, user
+lexicon, phrase breaks, setjmp/longjmp error unwinding), machine A's per-phrase driver (durations,
+segments, pitch), the phrase output, the front-end thread and its set-up; `make port-fe-check` ran
+text to phone lists with the C alone. Second part: **voice loading and the engine's set-up** - the
+voice file's streams for the unit stage (phone set, senone trees, statistics, alternative-unit rules)
+and for the synthesizer (the Inventory: codebooks, unit blobs, the noise / sine / fade tables), the
+synthesizer's mode characters (whisper, filters, room and RoboSoft effects), the enumeration of voices
+and characters with their SAPI mode descriptions and the shared voice table, the constructors of the
+queues and stage objects, the alternative-unit search's phrase rewrite; and the portable renderer.
+See "Done, session 5".
 
 Session 4 added 129 hooked functions (44.5 KB): the rest of the rule machine (rule execution, rule
 match, the rule-set main loop, rule apply: 3 instances each), every rule procedure the three machines
@@ -222,7 +231,7 @@ Negative controls were run for each group (one changed comparison or constant pe
 change was not detected it was confirmed to be unobservable (e.g. an equality the data never
 produces) or a generator was sharpened until it was.
 
-## Done, session 5 (146 functions)
+## Done, session 5 (200 functions)
 
 | address(es) | name(s) | what | verified by |
 |---|---|---|---|
@@ -240,6 +249,12 @@ produces) or a generator was sharpened until it was.
 | 0x6367764f, 0x636761ab, 0x63677b56, 0x636765ea, 0x636765a5, 0x6367678b, 0x63675f6b, 0x63676130, 0x63676159, 0x63677da6, 0x636778a7, 0x63677911, 0x6368021c, 0x63674478 | words_phrase, phone_list, ... | the phrase output: tapes copied out, phones with durations and interpolated pitch, the PhoneIn list | golden, hookdiff, port-fe-check |
 | 0x636837a4, 0x636836b8, 0x63684233 | fe_phrase_out, fe_set_pitch_level, fe_thread | the phone list with tag records and the "\Tp" converter path; the front-end thread | golden, hookdiff, port-fe-check |
 | 0x63677045, 0x63688803, 0x63689051, 0x636888e1, 0x63688a30, 0x63688bc2, 0x6368b129, 0x6368abc1, 0x636750ea, 0x6367518a, 0x6369aa68, 0x6367f50a, 0x636834d4, 0x636835bc, 0x636803b5, ... | words_open, word_obj_*, fe_ctor, fe_setup | set-up: word objects, user lexicons, the per-voice input buffers, the front end object | golden, hookdiff, port-fe-check |
+
+| 0x6367f73d, 0x6367fab1, 0x6367fbb1, 0x63673dc2, 0x63673312 / 0x636732fa, 0x63685847, 0x6368587f, 0x63685b25, 0x636856db, 0x63685471 and helpers | phoneset_load, senone_header_load, senone_tree_load, alt_*, unit_init | the unit stage's voice data: phone set (PhoneFile), senone trees (TreeImage), per-senone statistics (Senone), alternative-unit rules (AltUnits); storage access as one C interface over the emulator's COM objects or src/cfb.c | golden, hookdiff (PCM and heap), port-render-check |
+| 0x63672010, 0x63671f8d, 0x636720f4, 0x63675d45, 0x63675c95, 0x636850c0, 0x63685172, 0x63671063, 0x63681688, 0x636819e6, 0x6367fe99 | voc_header_load, voc_codebook_load, voc_inventory_load, voc_noise_make, voc_gauss, voc_sine_table, voc_fade_window, voc_setup, voc_engine_init, voc_init, effect_set_fir | the synthesizer's voice (Inventory), its derived tables, set-up, and the mode characters | golden (all 19 modes), hookdiff, port-render-check |
+| 0x63685d72 (+ 0x63685d18 retyped) | unit_lattice_apply | the alternative-unit search's rewrite of the phrase: units swapped, phones replaced, inserted, deleted or merged, senones looked up again around each edit | unit (random consistent rule sets, heap compared; the corpus's search never picks a rule), golden, hookdiff |
+| 0x63674db7, 0x63674e49, 0x63674df2, 0x63674e4c, 0x63674fcd, 0x6367d9ce, 0x6367d9f4, 0x6367db68, 0x6367dc4d, 0x6367de41, 0x6367de55, 0x6367de5a, 0x6367de79, 0x6367e71b, 0x6367e0ee, 0x6367efa0, 0x6367f0c9 | list_*, voice_read_header, mode_info, mode_info_cfg, cfg_*, mode_find, voices_enum, cfg_load, mode_table_add | the voices: *.vce headers and their CFG characters, *.cfg files, SAPI mode descriptions (TTSMODEINFO), the rank marks, the shared voice table with the characters' data | golden, hookdiff, port-render-check |
+| 0x636847ce, 0x6368488f, 0x63684967, 0x636851da, 0x63681401, 0x63671000, 0x63674cd8 | queue_ctor, queue_set_name, queue_set_high, unit_ctor, voc_engine_ctor, ... | constructors of the queues and the stage objects | golden, hookdiff, port-render-check |
 
 Not decompiled in the front end: the alternative prosody of mode 0 (0x636798ce, 0x6367930a,
 0x636787f9, 0x6367877e and helpers, ~5 KB; the engine always opens mode 1), the text mode that
@@ -351,24 +366,47 @@ load them from the DLL, like the voice data.
   source and rebuilds within the same second as the previous build gets the old binary. The controls
   delete the binary first.
 
+* **A null guest field is not a null host pointer (again).** `GP(T, 0)` is the guest memory's base in
+  the hook build; code that tests the converted pointer needs `GPN` (null for a null field). The
+  voice table's first `realloc` of a null table was one case.
+* **Host names into guest calls.** A stream name built in a C local must be copied onto the guest
+  stack before the emulator's IStorage sees it (`vc_stg_open_stream` does it now).
+* **The unit tests' heap restore.** Restoring the heap image left the first run's blocks in memory
+  above the snapshot's top; the second run's fresh allocations then saw them. The restore now clears
+  that memory (found by the lattice test: a realloc'd block's tail differed).
+* **The portable build end to end.** Every struct size written as a number where the struct holds
+  pointers (VocVoice, VocUnit, Effect, Allpass, VecArray and its vectors, QItem) had to become
+  `sizeof`; the unit stage hands Blob / TagOut records to the queue as QItems, whose union is
+  pointer-sized in a portable build, so they are copied field by field there; the effect presets in the
+  DLL's data hold pointers (field by field again); a mode record's argument was read even for records
+  without one (past the end of the data). AddressSanitizer found each in one run.
+* **Threads, single-threaded.** The portable driver runs each stage's own thread loop until it would
+  wait forever (`vc_idle_hook`, a longjmp back to the driver). Two things the threads gave for free
+  had to be kept: the queues' high-water marks must be out of reach (a full queue would park a
+  thread), and each thread has its own MSVCRT rand state starting at 1 - the RoboSoft warble draws on
+  the synthesizer thread's, the noise table on the set-up thread's (`vc_rand_use`).
+
 ## What is left, and the obstacles
 
-Reached and not yet decompiled: 269 functions, ~72.6 KB. By area:
+Reached and not yet decompiled: 95 functions, 11.4 KB. By area:
 
-1. **Front end outside the rule machines and the lexicon (~40 KB):** the front-end thread and text
-   input (0x63684233, 0x63689357, 0x63689726, 0x63689fee ...: ~9 KB), machine A's per-phrase driver
-   (0x6368c49b with 0x6368bab2, 0x6368f732, 0x6368fed5, 0x6368c6f1 ...: ~8 KB of duration / accent
-   heuristics over the word object), the phrase prosody at 0x636827b0..0x6368337f and 0x636837a4 /
-   0x6368043f (~10 KB), and 0x6369aaa4 (5.4 KB) with 0x6369c9e6 (1.6 KB).
-2. **Voice loading / COM** (~29 KB reached in 0x63671000..0x63680000): to be replaced rather than
-   reproduced in the portable build.
-3. **Unit stage leftovers**: the lattice phrase rewrite 0x63685d72 (2,210 B, barely reached), the tree
-   query 0x6367233c (never reached).
-4. **Synthesizer leftovers**: its init 0x636819e6 (C++ exception frame) and the resamplers.
-5. **~460 functions the corpus never reaches** (~40 KB).
-6. **The portable build**: `port/` loads the DLL's data at run time and runs the main lexicon;
-   a driver for the whole pipeline needs the rest of the front end and a single-threaded replacement
-   for the thread plumbing.
+1. **The SAPI / COM layer (~10 KB):** the engine object's set-up 0x6367a9ba (2 KB: queues, window,
+   audio-format negotiation, the three threads) and its constructor, the COM interfaces (ITTSCentral,
+   ITTSAttributes, ITTSEnum and their many 13-48 byte methods), the window procedure and the audio
+   side that hands PCM and bookmarks to the SAPI audio destination (0x6367a0b2, 0x6367b42d,
+   0x6367b1e1, 0x6367d470). The portable renderer replaces these with its driver (what the engine
+   object does is followed call for call: see port/render.c); a library build would expose its own
+   API instead of COM.
+2. **The user lexicon file reader** 0x636751e0 (892 B; reached, but the emulator has no such file).
+3. **C runtime helpers** (17 functions, 0.8 KB: _chkstk, the EH prolog, ...), which C does not need.
+4. **Never reached by the corpus** (~460 functions, ~40 KB): the alternative prosody of mode 0 (~5 KB),
+   the older senone-tree format (0x636727fd, 0x6367233c), the sample-rate converters (22050/11025 to
+   8000, 8000 to 11025, 22050 to 16000: only used when an audio destination refuses the voice's own
+   rate), the text mode 0x636744c4, error paths.
+5. **The portable renderer's coverage:** speed and pitch changes (ITTSAttributes; the golden set's 8
+   speed/pitch renders) are not driven yet, nor tagged text; the voice files are read from a directory
+   (a voice-baked build also needs the .vce files as a generated image: `vc_stg_open_mem` exists, the
+   enumeration would need a table in place of FindFirstFile).
 
 **Pointers.** The emulator is 32-bit guest on a 64-bit host, so C structs holding pointers cannot be
 shared between guest and native code the way OpenTV's 32-bit hook build shares them. Leaf functions
@@ -378,17 +416,17 @@ compiles both ways (`clang -fsyntax-only src/*.c` without DECOMP_HOOK passes). G
 pointers are accessed with `DLLPTR(T, addr)`: a 32-bit slot in the hook build, a host-pointer slot in
 the portable build (port/dllimage.c, filled from the DLL's relocations).
 
-**Threads.** The engine runs three worker threads with events and critical sections. The portable
-library will want a single-threaded pipeline (as OpenTV's did); the hook build keeps the original
-threads, so thread-structure changes can only be verified at the end, by the portable build against
-the golden hashes.
+**Threads.** The engine runs three worker threads with events and critical sections. The hook build
+keeps the original threads; the portable renderer runs the same thread loops one after another in
+one thread (see the pitfalls), verified against the golden hashes.
 
 ## Estimate
 
-Session 4 added 129 functions / 44.5 KB - three times session 3 - because the rule machine's
-instances share code, its procedures are mostly one template, and the dictionaries are one function
-over data. Half of the reached code (50.0% of bytes) is now C, and 98.5% of executed instructions. The
-risk named last time (the large rule-machine routines) is gone. What remains of the front end is
-hand-written heuristics over the word object (~40 KB, no templates to share), plus voice loading to
-replace. Revised estimate: **3-5 more weeks** of focused sessions to a portable build that reproduces
-the golden corpus.
+Session 5 added 200 functions / 63.8 KB and closed the loop: the portable build reproduces the golden
+corpus's 38 plain renders with no emulator. 92.1% of the reached bytes are C and effectively all
+executed instructions. What is left is the SAPI/COM shell (to be replaced by a library API rather
+than reproduced), speed/pitch/tag driving in the portable renderer, a baked voice image, and the
+code the corpus never reaches (decompile what a distribution needs: the 8 kHz converters if an
+output device may refuse 22 kHz; mode 0 prosody likely never). Revised estimate: **1-2 more
+sessions** to a portable library with speed, pitch and tags verified against the golden set and a
+voice-baked build; the unreached remainder is optional.
