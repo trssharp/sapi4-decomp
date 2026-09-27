@@ -17,43 +17,42 @@ DLL keeps running around it) and must leave the output bit-identical:
 
 All three pass with every hook enabled. `SAPI4_HOOKS=none` gives the untouched original.
 
-## Where this stands (2026-09-26/27, first session)
+## Where this stands (session 2, 2026-09-27)
 
-Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`):
+Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`,
+whose corpus now also includes the hookdiff texts):
 
 | | functions | bytes |
 |---|---|---|
-| static function list (excl. 73 import stubs; recursive descent + gap seeding, approximate) | ~1,000 | ~183,000 of .text 184,302 |
-| reached by the golden corpus + tagged text | 523 | 143,316 |
-| **decompiled and verified** | **38** (35 reached, 3 reached only by the unit tests) | **7,908** |
-| share of the reached set | 6.7% | 5.4% |
-| share of all guest instructions executed | | **89.6%** |
+| static function list (excl. 73 import stubs; approximate) | ~1,000 | ~183,000 of .text 184,302 |
+| reached by the corpus | 536 | 145,161 |
+| **decompiled and verified** | **111** (104 reached, 7 reached only by the unit tests) | **18,286** |
+| share of the reached set | 19.4% | 12.1% |
+| share of all guest instructions executed | | 89.2% |
 
-The 90% is where the time goes, not how much is done: the inverse FFT alone is 36% of every
-instruction the engine executes, the all-pole filter 26%, LSF-to-LPC 9%. The golden run went from
-21 s to 3.6 s because those now run as native code.
+Session 1 did the synthesizer's signal path (38 functions). Session 2 added 73:
+* **Unit stage** (the thread between front end and synthesizer): SAPI tag lexer and parser (11),
+  its containers (hash table, vectors: 11), the senone decision-tree lookup and phone fix-ups,
+  per-phrase unit selection, the prosody driver and both contour-interpolation passes (b[] and c[]).
+  What is left of it: the alternative-unit lattice search (0x63686614 / 0x63685c20 / 0x636882fc /
+  0x63685d72, mostly unreached), one notification timing routine (0x63687e26) and the thread
+  plumbing (queues, events, PostMessage), which is now hookable (see "Coroutine hooks").
+* **The C-runtime equivalence layer**: `src/vcrt.c` holds MSVCRT's C-locale ctype, the sign-only
+  string/memory compares, stricmp/strnicmp, CP1252 and USER32's character functions, lstrcmp(i)A's
+  word sort and MultiByteToWideChar. The emulator's own shims (`emu/crt.c`, `emu/winapi.c`) now call
+  these, so there is exactly one definition; the emulator stayed bit-exact on every check.
+  `src/crt_vc.c` adds the VC qsort, rand, and malloc/realloc/free/Sleep, which the hook build routes
+  to the guest heap / guest thread state.
+* **Front end, from its leaves**: 21 small helpers (text span accessors etc.), and the first templates
+  of its generated rule modules: the DLL has ~10 modules compiled from the same templates, so
+  `tools/dupes.py` groups identical code and `tools/instances.py` lists each copy's globals; one C
+  function then serves every copy (tape helpers x19, table binary search x5).
 
-**The synthesizer's signal path is complete**: for every unit the engine synthesizes, everything from
-the voice's Inventory bytes to the float samples handed to the audio layer is decompiled C -
-`voc_synth_unit` and everything below it (unit decoding, LSF->LPC, codebook spectra, inverse FFT,
-pitch marks, excitation assembly, the LPC synthesis filter, the FIR / IIR mode filters and the
-Hall / Stadium / Space / RoboSoft effect chain). What remains of the back-end thread is plumbing: its
-queues, events, the thread loop and the hand-off to IAudioDest (see "What is left").
-
-Verification of all of it, each run with every hook enabled:
-* `make check`: 5/5 tetyys.com references bit-identical.
-* `make golden`: 46/46.
-* `make hookdiff` (tools/hookdiff.sh): all 19 modes x 9 texts (tags, spelling, numbers, abbreviations,
-  a long sentence) x 2 utterances on a warm engine = 171 renders, identical to the original
-  (`SAPI4_HOOKS=none`) - an oracle that needs no recorded hashes.
-* `make unit`: 96,045 checks over 2,000 random cases per function, 0 mismatches. Struct methods run the
-  original and the C on the same guest memory (regions restored in between); allocating functions
-  also compare the whole guest heap (memory, free lists, top) - a leaked buffer is caught (negative
-  control done).
-* The guest heap after a render is identical with and without hooks (`SAPI4_HOOK_STATS=1` prints it),
-  so the decompiled allocations happen in the original's order and sizes.
-* Nested hooks were also verified separately: `SAPI4_HOOKS=-voc_synth_unit,...` lets the original
-  driver call the decompiled pieces individually (golden identical).
+Verification, all with every hook enabled: `make check` 5/5, `make golden` 46/46, `make hookdiff`
+171/171 renders identical to the original in PCM **and in the final guest heap state**, `make unit`
+173k checks over 1,000-2,000 random cases per function (struct methods run original and C on the
+same guest memory; allocating functions also compare the whole heap; negative controls done for the
+new areas).
 
 ## Engine architecture (as understood so far)
 
@@ -101,7 +100,7 @@ at 0x6371f018). Differences that matter for bit-exactness, found while decompili
 So the SAPI 5 port is an excellent map of *what* each back-end routine does; the exact arithmetic
 still has to come from this binary.
 
-## Done (38 functions)
+## Done, session 1: the signal path (38 functions)
 
 | address | name | what | verified by |
 |---|---|---|---|
@@ -144,6 +143,25 @@ still has to come from this binary.
 | 0x6368874c | dsp_place_halves | place a codebook entry's halves into the spectrum | golden, check, unit |
 | 0x636887a7 | dsp_add_halves | add them (delta frames) | golden, check, unit |
 
+## Done, session 2 (73 functions)
+
+| address(es) | name(s) | what | verified by |
+|---|---|---|---|
+| 0x63680f65, 0x63681002, 0x6368104a, 0x636810a6, 0x636810de, 0x6368114d | tag_lex, tag_lex_number/word/string/brace, tag_keyword | SAPI tag lexer | golden, hookdiff (tags), unit (token stream + buffers) |
+| 0x63681196, 0x6368119e, 0x636811d9, 0x63681237, 0x63681315 | tag_parse_*, tag_parse | tag parser (22-keyword table in .data) | golden, hookdiff, unit (with heap) |
+| 0x63675e95, 0x6367fb1e, 0x6367fb43, 0x63685bb9 | hash_lookup, named_index, named_item, prefix_cmp | string hash table, name lookups | golden, hookdiff |
+| 0x63688151..0x6368824c, 0x63685814 | intvec_*, vecarray_*, blob_copy80 | vectors, blobs | golden, hookdiff (heap) |
+| 0x63674184 | senone_lookup | senone decision trees | golden, unit (random trees) |
+| 0x636876b2 | phone_fixups | DX->T, unstressed diphthongs stressed | golden, unit |
+| 0x63687751 | unit_select | phone index + senone per phone of a phrase | golden, hookdiff |
+| 0x636871a4 | unit_prosody | durations, state values, output units | golden, hookdiff (heap) |
+| 0x63686c7d | unit_prosody_a | b[] contour interpolation, state insertion | golden, unit (random phrases) |
+| 0x63686905 | unit_prosody_b | c[] contour interpolation | golden, unit (random phrases, normalised by the original A) |
+| 0x6369d3a0..0x6369d5a0 etc. (21) | span_*, pair_reset, block8_clear, free_if, is_digit_char, char_class16, freelist_push, ... | front-end helpers | golden, hookdiff |
+| 0x63697558 + 8 copies | tapes_graphic_0..8 | rule modules: tape range all graphic | golden, unit (every copy) |
+| 0x63697583 + 9 instances | tapes_pad_0..9 | rule modules: pad the four tapes | golden, unit (every instance) |
+| 0x63697b42 + 4 instances | rule_bsearch_0..4 | rule modules: binary search in the module's table | golden, unit (every instance, real tables) |
+
 `src/crt_vc.c` also carries the VC runtime's qsort algorithm (the order of equal elements shows in
 the output) and `src/x87.h` the x87 conversions (fistp, _ftol, the |x| idiom).
 
@@ -172,34 +190,50 @@ the output) and `src/x87.h` the x87 conversions (fistp, _ftol, the |x| idiom).
 * The emulator's x87 is IEEE double with 53-bit precision (the Win32 default control word), and its
   CRT math uses the host libm - so native C with doubles and `-ffp-contract=off` matches it exactly.
   (The emulator itself is bit-exact against the genuine engine on the tetyys references.)
+* **Heap identity catches what audio does not.** Comparing the guest heap after a render with and
+  without hooks found a macro that evaluated `realloc` twice (GPSET, fixed) - the PCM was identical.
+  `tools/hookdiff.sh` now requires identical heaps too.
+* **Yields must happen where the original yields.** Heap identity then showed that a hooked
+  function that calls Sleep(0) changes the thread interleaving if the yield is deferred to its
+  return. Hooks marked `HOOKY` run their C on a per-guest-thread coroutine (ucontext) that is parked
+  at the Sleep and resumed when the guest thread is scheduled again (the trap instruction simply
+  re-executes). The same mechanism can block (EnterCriticalSection, waits), which makes the thread
+  plumbing hookable after all.
+* **32-bit address arithmetic.** `DLLVAR` added the load delta to a host pointer instead of to the
+  32-bit guest address; it happened to work where the result was converted back to a guest address,
+  and read garbage (ASLR-dependent) elsewhere. Fixed; every guest address sum is now done in uint32.
+* **x87 branch conditions are NaN-exact** (`x87_je`/`x87_jb`/... in `src/x87.h`): an unordered compare
+  reads as "equal" and "below" at the same time, which the C translation must reproduce.
+* **Sub-integer differences can be invisible to the corpus.** The prosody contours are rounded to
+  int16 before they reach the synthesizer: a deliberate 1e-4 error there left the golden corpus
+  identical. Those functions are verified by unit tests on their raw output (which catch it).
+* **The original can hang on inputs it never gets.** Contour pass B loops forever on phrases pass A has
+  not normalised; its unit test first runs the original pass A (as the engine does).
+* **Functions under 3 bytes cannot be hooked** (the trap is 3 bytes); three 1-byte `ret` functions in
+  the front end are left out of the counts.
+* **Unreachable-in-practice inputs** where C and original must differ are marked: a tag starting with
+  "=" makes the original call address 1 (C returns E_FAIL); a > 1023-character tag and a
+  delta frame with no preceding full frame read stale stack in the original (C reads zeros). The hook
+  build prints `decomp WARNING` if any of these ever happens; none has in any render.
 
 ## What is left, and the obstacles
 
-1. **The back end's plumbing** (~15 functions, ~3 KB): the synthesis thread (0x636822a1 -> 0x63681ede),
-   its request loop (0x63681cb2: grows buffers, calls voc_synth_unit), the audio hand-off
-   (0x63681b7e: float -> PCM, PostMessage to the audio window, flow control), set-up (0x636819e6, C++
-   with an exception frame), and a thread-safe queue with high/low-water events (0x63684899..
-   0x63684aa1, 0x6368225f). These call EnterCriticalSection / SetEvent / WaitForSingleObject /
-   PostMessageA, which a hook cannot call halfway (a host function cannot block), so they are not
-   hookable one by one; the portable build replaces them with a single-threaded pipeline, as OpenTV
-   replaced its SAPI engine thread. Verification for that layer is end-to-end only (portable build vs
-   golden hashes).
-2. **The unit stage** (thread 0x63687d3f, 55 functions, 12.5 KB): decision-tree walking (TreeImage,
-   PhoneFile), durations and F0. Mostly integer and string code plus some x87; hookable.
-3. **The front end** (thread 0x636844b6, 308 functions, 94 KB) - the bulk of the work: text
-   normalisation, lexicon, letter-to-sound, CART, prosody. Big functions (0x63673312 is 2,736 bytes,
-   0x63689fee 2,583). Needs a C runtime layer that reproduces the emulator's MSVCRT exactly (string
-   compare returning only the sign, the C-locale ctype table, strtok per thread, sprintf/sscanf);
-   the plan is to move those out of emu/crt.c into src/crt_vc.c and have the emulator call them, so
-   there is one definition.
-4. **Voice loading / COM** (ITTSEnum::Select subtree, 126 functions, 20 KB) and the SAPI 4 COM glue,
-   which a portable library would replace rather than reproduce.
-5. **477 functions the corpus never reaches** (~42 KB): dialogs, the lexicon manager, tags and paths
-   the corpus does not exercise. The corpus needs growing (tags, spelling, user lexicon) before those
-   can be verified by anything but the unit tester.
-6. **The data.** The portable build needs the DLL's tables (.rdata 515 KB, .data 120 KB: abbreviation
-   table, lexicon, effect presets, ...). OpenTV's answer applies: an extraction tool that regenerates
-   them from the user's own DLL at build time, never committed. `DLLVAR()` marks every use.
+1. **Thread plumbing** (both stages, ~25 functions, ~5 KB): queues with high/low-water events,
+   PostMessage notifications, the thread loops, the synthesis request loop and the audio hand-off.
+   Now hookable with `HOOKY` coroutines; needs vc_* equivalents of EnterCriticalSection /
+   SetEvent / ResetEvent / PostMessageA that do exactly what the emulator's do (including blocking).
+2. **The unit stage's alternative-unit lattice** (0x63686614, 0x63685c20, 0x636882fc, 0x63685d72:
+   ~3.7 KB, mostly never reached - 53 of 718 instructions of the Viterbi-like search run). Needs a
+   corpus that reaches it, or unit tests on synthetic lattices, which need its data structures.
+3. **The front end** (~290 functions, ~90 KB): the rule modules are generated code - once the template
+   families are known (dupes.py finds 50+ groups, up to 2 x 3,065 bytes), one decompilation covers
+   several copies; the rest is text normalisation, lexicon and letter-to-sound, much of it integer and
+   string code over the vcrt layer.
+4. **Voice loading / COM** (ITTSEnum::Select subtree, ~20 KB) - to be replaced rather than reproduced.
+5. **~480 functions the corpus never reaches** (~40 KB).
+6. **Data extraction** for the portable build (.rdata 515 KB, .data 120 KB), and a portable driver.
+   `make portable-check` lists what the portable build still needs from the original (currently one
+   function, 0x6367233c, reached only through `harness/guest.c`).
 
 **Pointers.** The emulator is 32-bit guest on a 64-bit host, so C structs holding pointers cannot be
 shared between guest and native code the way OpenTV's 32-bit hook build shares them. Leaf functions
@@ -215,10 +249,9 @@ the golden hashes.
 
 ## Estimate
 
-From this session's rate: 38 functions / 7.9 KB, including all the x87-heavy DSP, in one session,
-with the tooling built along the way (the dataflow tool made the FFT and the pitch marks tractable).
-Integer/string front-end code decompiles faster per byte but has far more control flow and needs the
-CRT layer first. The remaining reached code is ~135 KB. OpenTV's comparable engine was 223 functions /
-151 KB. A realistic figure is **5-8 more weeks of focused sessions** to a portable build that
-reproduces the golden corpus: unit stage ~1 week, front end 3-5 weeks, voice loading + data extraction
-+ portable driver ~1-2 weeks. The unreached 42 KB is extra and depends on growing the corpus.
+Session 2 added 73 functions / 10.4 KB, including two tangled x87 state machines (the contour passes,
+done as block-structured C with the original's basic blocks as labels) and the infrastructure that
+the rest needs (vcrt layer, coroutine hooks, guest calls, template grouping). Remaining reached code is
+~128 KB, most of it front end. Revised estimate: **4-7 more weeks** of focused sessions to a portable
+build that reproduces the golden corpus - the template grouping should make the rule modules cheaper
+than their byte count suggests, the lexicon / letter-to-sound code is the unknown.
