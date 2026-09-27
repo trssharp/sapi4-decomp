@@ -8,6 +8,7 @@
 #include "voice.h"
 #include "fe_vm.h"
 #include "fe_input.h"
+#include "fe_phones.h"
 #include <string.h>
 
 static uint32_t guest_call(uint32_t pref, int nargs, const uint32_t *args) {
@@ -97,4 +98,19 @@ int32_t text_from_other(char *text, GPTR(char) *out) {
     memcpy(out, decomp_guest_mem + g, 4);
     c->s.r[ESP] = sp;
     return r;
+}
+
+void pros_alt_a(Prosody *p) { uint32_t a[1] = { host_to_guest_ptr(p) }; guest_call(0x636798ce, 1, a); }
+void pros_alt_b(Prosody *p) { uint32_t a[1] = { host_to_guest_ptr(p) }; guest_call(0x6367930a, 1, a); }
+void pros_alt_c(Prosody *p) { uint32_t a[1] = { host_to_guest_ptr(p) }; guest_call(0x636787f9, 1, a); }
+void pros_alt_d(GPTR(float) *tmp, Prosody *p) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - 16u) & ~15u;
+    uint32_t g = c->s.r[ESP];
+    memcpy(decomp_guest_mem + g, tmp, 4);
+    uint32_t a[2] = { g, host_to_guest_ptr(p) };
+    guest_call(0x6367877e, 2, a);
+    memcpy(tmp, decomp_guest_mem + g, 4);
+    c->s.r[ESP] = sp;
 }

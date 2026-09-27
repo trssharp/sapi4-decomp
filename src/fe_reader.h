@@ -15,6 +15,31 @@ typedef struct UserLex {
     GPTR(GPTR(LexEntry)) entries;   // 0x04
 } UserLex;
 
+// the phrase being turned into phones (part of WordInput)
+typedef struct Prosody {
+    int32_t g0, g4;             // 0x00 copies of 0x63738b6c / 0x63738b70
+    int32_t _08;
+    GPTR(char) s[9];            // 0x0c copies of the word object's tapes, and (s[8]) its output string
+    GPTR(int32_t) phone_pos;    // 0x30 per phone character: its position (kind 4 events)
+    int32_t f34;                // 0x34
+    uint8_t _38[0x3d94 - 0x38];
+    int32_t f3d94;              // 0x3d94
+    uint8_t _3d98[0x4640 - 0x3d98];
+    GPTR(float) pitch;          // 0x4640 per phone: pitch (Hz or quarter semitones)
+    GPTR(char) phones;          // 0x4644 the phone characters
+    int32_t targets[1000][2];   // 0x4648 pitch targets: (time, value), ended by (0x7fffffff, 0)
+    char phone_chars[1000];     // 0x6588
+    int32_t phone_end[1000];    // 0x6970 cumulative duration at each phone's end
+    int32_t phone_dur[1000];    // 0x7910
+    uint8_t _88b0[0xf614 - 0x88b0];
+    GPTR(uint8_t) recs;         // 0xf614 records of 0x340 bytes (each with a malloc'd pointer at +0x14)
+    int32_t nrecs;              // 0xf618
+    int32_t npitch;             // 0xf61c
+    int32_t pitch_hz;           // 0xf620
+    uint8_t _f624[0xfb40 - 0xf624];
+    int32_t mode;               // 0xfb40 0: the alternative prosody (not decompiled)
+} Prosody;
+
 // the per-voice input buffer (0x63738968 + 4 * index points to one)
 typedef struct WordInput {
     GPTR(char) buf;         // 0x00 (malloc)
@@ -22,12 +47,12 @@ typedef struct WordInput {
     GPTR(char) rd;          // 0x08
     GPTR(char) wr;          // 0x0c
     int32_t len;            // 0x10
-    GPTR(char) out[9];      // 0x14 per-phrase results (malloc)
+    GPTR(char) out[9];      // 0x14 the word object's output string and tape copies (malloc)
     int32_t _38;
     int32_t flag;           // 0x3c
     int32_t pitch;          // 0x40 12 * 4 * log2(pitch_hz / 50)
-    uint8_t _44[0xf668 - 0x44];
-    int32_t pitch_hz;       // 0xf668
+    GPTR(int32_t) marks;    // 0x44 index events: (position, value) pairs
+    Prosody p;              // 0x48
 } WordInput;
 
 // events on the word object's list (a failure to allocate is -1; an event type the object does not

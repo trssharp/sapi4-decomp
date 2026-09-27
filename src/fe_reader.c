@@ -14,6 +14,12 @@
 
 LAYOUT(WordInput, len, 0x10);
 LAYOUT(WordInput, flag, 0x3c);
+LAYOUT(WordInput, p, 0x48);
+LAYOUT(Prosody, pitch, 0x4640);
+LAYOUT(Prosody, phone_dur, 0x7910);
+LAYOUT(Prosody, recs, 0xf614);
+LAYOUT(Prosody, pitch_hz, 0xf620);
+LAYOUT(Prosody, mode, 0xfb40);
 LAYOUT(UserLex, entries, 4);
 
 // ------------------------------------------------------------------ the reader's state
@@ -942,7 +948,7 @@ int32_t words_continue(int32_t idx, int32_t *consumed, int32_t *last) {
 
 void words_set_pitch(int32_t idx, int32_t hz) {
     WordInput *in = GP(WordInput, DLLPTR(WordInput, 0x63738968)[idx]);
-    in->pitch_hz = hz;
+    in->p.pitch_hz = hz;
     double a = log((double)hz * 0.02) * 48.0;
     in->pitch = x87_ftol(a / log(2.0));
 }

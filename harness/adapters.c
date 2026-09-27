@@ -10,6 +10,7 @@
 #include "fe_split.h"
 #include "fe_input.h"
 #include "fe_reader.h"
+#include "fe_phones.h"
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -29,6 +30,8 @@
 #define A(i) x86_arg(c, (i))
 #define AI(i) ((int32_t)x86_arg(c, (i)))
 static inline float argf(X86 *c, int i) { uint32_t u = x86_arg(c, i); float f; memcpy(&f, &u, 4); return f; }
+// a double argument in stack slots i and i+1
+static inline double argd2(X86 *c, int i) { uint64_t u = (uint64_t)x86_arg(c, i) | (uint64_t)x86_arg(c, i + 1) << 32; double d; memcpy(&d, &u, 8); return d; }
 // host pointer to n elements of guest memory at a (NULL when n <= 0: the function never dereferences it)
 #define PTR(T, a, n) ((n) > 0 ? GPH(T, (a), (uint32_t)(n) * sizeof(T)) : (T *)NULL)
 // host pointer to guest a, checking the element range [lo, hi) the function touches (may be negative)
@@ -655,3 +658,28 @@ void hk_fe_voice_flags(Emu *e, X86 *c) { fe_voice_flags(THIS(FrontEnd), AI(0)); 
 void hk_fe_text_end(Emu *e, X86 *c) { E_RET((uint32_t)fe_text_end(THIS(FrontEnd))); }
 void hk_voice_rec(Emu *e, X86 *c) { E_RET(host_to_guest(voice_rec(GPH(uint8_t, A(0), 0xb20), A(1), GPH(int32_t, A(2), 4), GPH(int32_t, A(3), 4)))); }
 void hk_voice_rec_count(Emu *e, X86 *c) { E_RET(voice_rec_count(GPH(uint8_t, A(0), 0xb1c))); }
+
+// ------------------------------------------------------------------ phrase output (fe_phones.c)
+#define PROS(a) GPH(Prosody, (a), sizeof(Prosody))
+void hk_tapes_copy(Emu *e, X86 *c) {
+    tapes_copy(AI(0), GPH(uint32_t, A(1), 4), GPH(uint32_t, A(2), 4), GPH(uint32_t, A(3), 4), GPH(uint32_t, A(4), 4), GPH(uint32_t, A(5), 4));
+}
+void hk_phrase_init(Emu *e, X86 *c) {
+    E_RET((uint32_t)phrase_init(PROS(A(0)), GSTR(A(1)), GSTR(A(2)), GSTR(A(3)), GSTR(A(4)), GSTR(A(5)), GSTR(A(6)),
+                                GSTR(A(7)), GSTR(A(8)), GSTR(A(9)), AI(10), GPH(uint8_t, A(11), 1), GPH(int32_t, A(12), 8)));
+}
+void hk_phrase_parse(Emu *e, X86 *c) { E_RET((uint32_t)phrase_parse(GSTR(A(0)), GPH(uint32_t, A(1), 4), GPH(uint32_t, A(2), 4), PROS(A(3)))); }
+void hk_pitch_value(Emu *e, X86 *c) { x86_fpu_push(c, pitch_value(AI(0), AI(1), argd2(c, 2))); }
+void hk_phone_name(Emu *e, X86 *c) { E_RET(phone_name((uint8_t)A(0))); }
+void hk_name_is_vowel(Emu *e, X86 *c) { E_RET((uint32_t)name_is_vowel(GSTR(A(0)))); }
+void hk_code_is_vowel(Emu *e, X86 *c) { E_RET((uint32_t)code_is_vowel((char)A(0))); }
+void hk_phone_list(Emu *e, X86 *c) {
+    E_RET((uint32_t)phone_list(AI(0), GSTR(A(1)), GSTR(A(2)), A(3) ? GPH(float, A(3), 4) : NULL,
+                               A(4) ? GPH(PhoneIn, A(4), sizeof(PhoneIn)) : NULL, AI(5), AI(6), GSTR(A(7)), GSTR(A(8))));
+}
+void hk_words_phrase(Emu *e, X86 *c) { E_RET((uint32_t)words_phrase(AI(0))); }
+void hk_phrase_free(Emu *e, X86 *c) { phrase_free(PROS(A(0)), AI(1)); }
+void hk_phones_build(Emu *e, X86 *c) { E_RET((uint32_t)phones_build(AI(0), A(1) ? GPH(PhoneIn, A(1), sizeof(PhoneIn)) : NULL, AI(2), AI(3))); }
+void hk_words_abort(Emu *e, X86 *c) { words_abort(AI(0)); }
+void hk_str_dup0(Emu *e, X86 *c) { E_RET(host_to_guest(str_dup0(GSTR(A(0))))); }
+void hk_calloc_n(Emu *e, X86 *c) { E_RET(host_to_guest(calloc_n(A(0), A(1)))); }
