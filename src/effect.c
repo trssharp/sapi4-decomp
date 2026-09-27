@@ -91,3 +91,104 @@ void effect_process(Effect *self, float *buf, int n) {
     }
     self->rnd = (float)((double)vc_rand() * 0.000244140625);
 }
+
+void effect_ap_clear(Effect *self, Allpass *ap) {
+    (void)self;
+    float *b = GP(float, ap->buf);
+    for (int i = 0; i < ap->len; i++) b[i] = 0.0f;
+}
+
+int16_t effect_ap_init(Effect *self, Allpass *ap, float gain, int delay, int len) {
+    ap->gain = gain;
+    ap->delay = delay;
+    ap->len = len;
+    ap->fir = 0;
+    float *b = vc_malloc((size_t)(uint32_t)(len * 4));
+    GPSET(ap->buf, b);
+    if (!b) return 1;
+    GPSET(ap->rd, b);
+    GPSET(ap->end, b + ap->len);
+    GPSET(ap->wr, ap->len == ap->delay ? b : b + ap->delay);
+    effect_ap_clear(self, ap);
+    return 0;
+}
+
+int16_t effect_build_stages(Effect *self, int16_t n, GPTR(Allpass) *stages, const float *delays_ms,
+                            const float *gains_db, float samples_per_ms) {
+    int16_t r = 0;
+    for (int i = 0; i < n; i++) {
+        Allpass *ap = vc_malloc(0x20);
+        GPSET(stages[i], ap);
+        if (!ap) return 1;
+        int d = x87_ftol((double)delays_ms[i] * samples_per_ms);
+        if (d < 2) d = 2;
+        double g = effect_db_to_gain(self, gains_db[i]);
+        r = effect_ap_init(self, ap, (float)g, d, d);
+        if (r) return r;
+    }
+    return r;
+}
+
+void effect_free(Effect *self) {
+    for (int i = 0; i < 5; i++) {
+        Allpass *ap = GP(Allpass, self->stage[i]);
+        if (!self->stage[i]) continue;
+        if (ap->buf) vc_free(GP(void, ap->buf));
+        if (ap->fir) vc_free(GP(void, ap->fir));
+        vc_free(ap);
+        self->stage[i] = 0;
+    }
+    if (self->scratch) {
+        vc_free(GP(void, self->scratch));
+        self->scratch = 0;
+    }
+}
+
+GPTR(const EffectPreset) effect_preset(Effect *self, int mode) {
+    (void)self;
+    static const uint32_t table[8] = { 0, 0x6371f0a8, 0x6371f0c8, 0x6371f018, 0x6371f088, 0x6371f050, 0x6371f0e8, 0x6371f108 };
+    if (mode >= 1 && mode <= 7) {
+        GPTR(const EffectPreset) p;
+        GPSET(p, DLLVAR(const EffectPreset, table[mode]));
+        return p;
+    }
+#ifdef DECOMP_HOOK
+    return (uint32_t)mode;
+#else
+    return (const EffectPreset *)(intptr_t)mode;
+#endif
+}
+
+int16_t effect_init(Effect *self, int mode, int rate) {
+    if (mode <= 0) {
+        effect_free(self);
+        return 2;
+    }
+    self->preset = effect_preset(self, mode);
+    const EffectPreset *p = GP(const EffectPreset, self->preset);
+    self->nstages = p->nstages;
+    self->send = (float)effect_db_to_gain(self, p->send_db);
+    self->dry = (float)effect_db_to_gain(self, p->dry_db);
+    int16_t r = effect_build_stages(self, (int16_t)self->nstages, self->stage, GP(const float, p->delays),
+                                    GP(const float, p->gains_db), (float)((double)rate * (double)0.001f));
+    if (r) return r;
+    if (!self->scratch) {
+        float *s = vc_malloc((size_t)(uint32_t)(self->chunk * 4));
+        GPSET(self->scratch, s);
+        if (!s) return 1;
+    }
+    return r;
+}
+
+Effect *effect_ctor(Effect *self) {
+    self->send = 0.0f;
+    self->chunk = 0x400;
+    self->dry = 0.0f;
+    self->scratch = 0;
+    self->nstages = 0;
+    self->rnd = 0.0f;
+    self->coef = 0;
+    self->ncoef = 0;
+    for (int i = 0; i < 5; i++) self->stage[i] = 0;
+    return self;
+}

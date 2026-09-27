@@ -8,11 +8,16 @@
 extern _Thread_local uint8_t *decomp_guest_mem;
 #define GPTR(T) uint32_t
 #define GP(T, v) ((T *)(void *)(decomp_guest_mem + (v)))
-#define GPSET(field, p) ((field) = (uint32_t)((uint8_t *)(p) - decomp_guest_mem))
+#define GPSET(field, p) ((field) = (p) ? (uint32_t)((uint8_t *)(p) - decomp_guest_mem) : 0u)
+// a global of the original DLL, by its preferred-base address (hook build: the live copy in the image)
+extern uint32_t decomp_load_delta;
+#define DLLVAR(T, addr) ((T *)(void *)(decomp_guest_mem + (uint32_t)(addr) + decomp_load_delta))
 #define LAYOUT(T, field, off) _Static_assert(__builtin_offsetof(T, field) == (off), #T "." #field)
 #else
 #define GPTR(T) T *
 #define GP(T, v) ((T *)(v))
 #define GPSET(field, p) ((field) = (p))
+// portable build: the DLL's data tables are not extracted yet
+#define DLLVAR(T, addr) (_Static_assert(0, "DLL data not extracted yet"), (T *)0)
 #define LAYOUT(T, field, off)
 #endif

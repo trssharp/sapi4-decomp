@@ -7,6 +7,14 @@ uint32_t decomp_load_delta;
 _Thread_local uint8_t *decomp_guest_mem;
 _Thread_local Emu *decomp_emu;
 
+void *vc_malloc(size_t n) {
+    uint32_t p = emu_malloc(decomp_emu, (uint32_t)n);
+    return p ? decomp_guest_mem + p : NULL;
+}
+void vc_free(void *p) {
+    if (p) emu_free(decomp_emu, (uint32_t)((uint8_t *)p - decomp_guest_mem));
+}
+
 // MSVCRT rand() on the calling guest thread's own state (exactly what the emulator's CRT does)
 int vc_rand(void) {
     Thread *t = decomp_emu->cur;
@@ -55,6 +63,7 @@ int decomp_install_hooks(Emu *e, uint32_t load_base, uint32_t pref_base) {
 void decomp_report(Emu *e) {
 #ifndef CV_NO_DEBUG_ENV
     if (!getenv("SAPI4_HOOK_STATS")) return;
+    fprintf(stderr, "guest heap: next %08x live %llu\n", e->heap_next, (unsigned long long)e->heap_live);
     for (int i = 0; i < e->nhosts; i++)
         for (int k = 0; k < decomp_nhooks; k++)
             if (e->hosts[i].fn == decomp_hooks[k].fn)

@@ -8,3 +8,7 @@ void vc_qsort(void *base, size_t num, size_t width, int (*cmp)(const void *, con
 // rand() as MSVCRT has it (per-thread state, seed 1): the effects' RoboSoft warble depends on the
 // exact sequence. In the hook build this advances the calling guest thread's own state.
 int vc_rand(void);
+// malloc / free on the engine's heap (in the hook build the guest heap, so the original code can use
+// what the decompiled code allocates, in the same order and at the same addresses)
+void *vc_malloc(size_t n);
+void vc_free(void *p);

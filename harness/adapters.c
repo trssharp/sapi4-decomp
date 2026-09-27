@@ -142,3 +142,19 @@ void hk_effect_process(Emu *e, X86 *c) {
     int n = AI(1);
     effect_process(THIS(Effect), PTR(float, A(0), n), n);
 }
+
+static uint32_t host_to_guest(const void *p) { return p ? (uint32_t)((const uint8_t *)p - decomp_guest_mem) : 0; }
+void hk_effect_ap_clear(Emu *e, X86 *c) { effect_ap_clear(THIS(Effect), GPH(Allpass, A(0), sizeof(Allpass))); E_RET(A(0)); }
+void hk_effect_ap_init(Emu *e, X86 *c) {
+    E_RET(effect_ap_init(THIS(Effect), GPH(Allpass, A(0), sizeof(Allpass)), argf(c, 1), AI(2), AI(3)));
+}
+void hk_effect_build_stages(Emu *e, X86 *c) {
+    int16_t n = (int16_t)A(0);
+    int k = n > 0 ? n : 1;
+    E_RET((uint16_t)effect_build_stages(THIS(Effect), n, GPH(uint32_t, A(1), 4u * k), PTR(float, A(2), k),
+                                        PTR(float, A(3), k), argf(c, 4)));
+}
+void hk_effect_free(Emu *e, X86 *c) { effect_free(THIS(Effect)); }
+void hk_effect_preset(Emu *e, X86 *c) { E_RET(effect_preset(THIS(Effect), AI(0))); }
+void hk_effect_init(Emu *e, X86 *c) { E_RET((uint16_t)effect_init(THIS(Effect), AI(0), AI(1))); }
+void hk_effect_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(effect_ctor(THIS(Effect)))); }

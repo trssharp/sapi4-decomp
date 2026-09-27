@@ -50,3 +50,22 @@ void effect_allpass(Effect *self, Allpass *ap, uint32_t n, const float *in, floa
 void effect_chain(Effect *self, float *buf, int n, GPTR(Allpass) *stages);
 // @0x63680189 thiscall: the whole effect over a buffer, in chunks; then draws the next warble value
 void effect_process(Effect *self, float *buf, int n);
+
+// @0x6367fc36 thiscall: clear an allpass delay line
+void effect_ap_clear(Effect *self, Allpass *ap);
+// @0x6367fc54 thiscall: set up an allpass (allocates len floats); returns 1 (in AX) if out of memory
+int16_t effect_ap_init(Effect *self, Allpass *ap, float gain, int delay, int len);
+// @0x6367fcb7 thiscall: allocate and set up n stages from the preset's delays (ms * samples_per_ms,
+// at least 2) and gains (dB); returns nonzero (AX) on failure
+int16_t effect_build_stages(Effect *self, int16_t n, GPTR(Allpass) *stages, const float *delays_ms,
+                            const float *gains_db, float samples_per_ms);
+// @0x6367fd50 thiscall: free the stages and the scratch buffer
+void effect_free(Effect *self);
+// @0x6367fda2 thiscall: the preset of voice-effect mode 1..7 (a table in .data); other values are
+// returned unchanged (as the pointer!)
+GPTR(const EffectPreset) effect_preset(Effect *self, int mode);
+// @0x6367fdf5 thiscall: set the effect up for mode (<= 0: none) at a sample rate; 0 = ok, 1 = out of
+// memory, 2 = no effect (AX)
+int16_t effect_init(Effect *self, int mode, int rate);
+// @0x6367fee8 thiscall: constructor (preset and shrink are left uninitialised, as in the original)
+Effect *effect_ctor(Effect *self);
