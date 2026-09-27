@@ -587,6 +587,22 @@ static void t_tapes(int iter) {
         memcpy(ends, se, 8);
     }
     for (int k = 0; k < 4; k++) wr32(C, gaddr(tapes[k]), save[k]);
+    // the table searches: real tables, keys taken from them (hits) or perturbed (misses)
+    static const uint32_t gb[5][2] = { {0x63697b42,0x636cad90},{0x63697fea,0x636cda80},{0x636984bf,0x636ce848},{0x63699790,0x636d3e78},{0x6369a8f3,0x63718da0} };
+    uint8_t *key = gp(gaddr(RULE_KEY), 16);
+    uint8_t skey[16]; memcpy(skey, key, 16);
+    for (int k = 0; k < 5; k++) {
+        uint8_t width = (uint8_t)rndi(1, 6), lo = (uint8_t)rndi(0, 40), hi = (uint8_t)(lo + rndi(0, 40));
+        uint32_t base = (uint32_t)rndi(0, 300);
+        const uint8_t *tab = gp(gaddr(gb[k][1]), 1);
+        uint8_t pick = (uint8_t)rndi(lo, hi);
+        memcpy(key, tab + (uint16_t)(width * pick + base), width);
+        if (rnd() % 3 == 0) key[rnd() % width] ^= (uint8_t)(1 + rnd() % 255);
+        uint32_t a2[4] = { base, lo, hi, width };
+        uint32_t r1 = call(gb[k][0], 4, a2) & 0xff, r2 = rule_bsearch(tab, base, lo, hi, width);
+        check("rule_bsearch", iter, "AL", &r1, &r2, 4);
+    }
+    memcpy(key, skey, 16);
 }
 
 int main(int argc, char **argv) {

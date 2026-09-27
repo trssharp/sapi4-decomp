@@ -278,3 +278,8 @@ void hk_tapes_pad_6(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tap
 void hk_tapes_pad_7(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x63739908), (int16_t)A(0))); }
 void hk_tapes_pad_8(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x63739948), (int16_t)A(0))); }
 void hk_tapes_pad_9(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x63739988), (int16_t)A(0))); }
+void hk_rule_bsearch_0(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | rule_bsearch(DLLVAR(const uint8_t, 0x636cad90), A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }
+void hk_rule_bsearch_1(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | rule_bsearch(DLLVAR(const uint8_t, 0x636cda80), A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }
+void hk_rule_bsearch_2(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | rule_bsearch(DLLVAR(const uint8_t, 0x636ce848), A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }
+void hk_rule_bsearch_3(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | rule_bsearch(DLLVAR(const uint8_t, 0x636d3e78), A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }
+void hk_rule_bsearch_4(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | rule_bsearch(DLLVAR(const uint8_t, 0x63718da0), A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }

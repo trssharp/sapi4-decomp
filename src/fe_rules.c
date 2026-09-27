@@ -19,3 +19,26 @@ int16_t tapes_pad(const int16_t *ends, int16_t a) {
         for (int16_t i = (int16_t)(ends[k] + 1); i <= m; i++) TAPE(tapes[k])[i] = '~';
     return m;
 }
+
+uint8_t rule_bsearch(const uint8_t *table, uint32_t base, uint8_t lo, uint8_t hi, uint8_t width) {
+    const uint8_t *key = DLLVAR(const uint8_t, RULE_KEY);
+    while (hi > lo) {
+        uint8_t mid = (uint8_t)(lo + (((int)hi - (int)lo) >> 1));
+        uint16_t pos = (uint16_t)(width * mid + base);
+        uint8_t k = 0;
+        if (key[0] == table[pos]) {
+            uint8_t last = (uint8_t)(width - 1);
+            while (k < last) {
+                pos++;
+                k++;
+                if (key[k] != table[pos]) break;
+            }
+        }
+        if (key[k] > table[pos]) lo = (uint8_t)(mid + 1);
+        else hi = mid;
+    }
+    uint16_t at = (uint16_t)(width * lo + base);
+    for (uint8_t k = 0; k < width; k++)
+        if (key[k] != table[at + k]) return 0xff;
+    return lo;
+}
