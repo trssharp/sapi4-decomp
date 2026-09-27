@@ -316,6 +316,67 @@ static void t_effect(int iter) {
     }
 }
 
+// whole-heap snapshot, for functions that allocate or free: the original and the C version must leave
+// the guest heap (its memory and the allocator state) identical
+typedef struct { uint8_t *mem; uint32_t next, n; uint32_t freel[HEAP_CLASSES], large; uint64_t live; } HeapSnap;
+static void heap_snap(HeapSnap *h) {
+    h->next = E->heap_next; h->n = E->heap_next - EMU_HEAP_BASE;
+    h->mem = malloc(h->n); memcpy(h->mem, E->mem + EMU_HEAP_BASE, h->n);
+    memcpy(h->freel, E->heap_free, sizeof h->freel); h->large = E->heap_large; h->live = E->heap_live;
+}
+static void heap_restore(const HeapSnap *h) {
+    memcpy(E->mem + EMU_HEAP_BASE, h->mem, h->n);
+    E->heap_next = h->next; memcpy(E->heap_free, h->freel, sizeof h->freel); E->heap_large = h->large; E->heap_live = h->live;
+}
+static void heap_check(const char *fn, int iter, const HeapSnap *a) {
+    HeapSnap b; heap_snap(&b);
+    check(fn, iter, "heap top", &a->next, &b.next, 4);
+    check(fn, iter, "heap free lists", a->freel, b.freel, sizeof a->freel);
+    check(fn, iter, "heap large list", &a->large, &b.large, 4);
+    check(fn, iter, "heap live", &a->live, &b.live, 8);
+    if (a->n == b.n) check(fn, iter, "heap memory", a->mem, b.mem, a->n);
+    free(b.mem);
+}
+
+// effect_init / effect_free / effect_ctor against the originals, heap included
+static void t_effect_life(int iter) {
+    int mode = rndi(-1, 7), rate = (iter & 1) ? 22050 : 8000;
+    uint32_t ge = galloc(sizeof(Effect));
+    memset(gp(ge, sizeof(Effect)), 0, sizeof(Effect));
+    C->s.r[ECX] = ge; call(0x6367fee8, 0, NULL);          // original constructor
+    HeapSnap h0; heap_snap(&h0);
+    uint32_t a[2] = { (uint32_t)mode, (uint32_t)rate };
+    uint32_t r1 = thiscall(0x6367fdf5, ge, 2, a) & 0xffff;
+    HeapSnap h1; heap_snap(&h1);
+    Effect after; memcpy(&after, gp(ge, sizeof(Effect)), sizeof after);
+    heap_restore(&h0);
+    uint32_t r2 = (uint16_t)effect_init(gp(ge, sizeof(Effect)), mode, rate);
+    check("effect_init", iter, "AX", &r1, &r2, 4);
+    check("effect_init", iter, "object", &after, gp(ge, sizeof(Effect)), sizeof after);
+    heap_check("effect_init", iter, &h1);
+    free(h0.mem); free(h1.mem);
+    // free it both ways
+    heap_snap(&h0);
+    thiscall(0x6367fd50, ge, 0, NULL);
+    heap_snap(&h1);
+    memcpy(&after, gp(ge, sizeof(Effect)), sizeof after);
+    heap_restore(&h0);
+    effect_free(gp(ge, sizeof(Effect)));
+    check("effect_free", iter, "object", &after, gp(ge, sizeof(Effect)), sizeof after);
+    heap_check("effect_free", iter, &h1);
+    free(h0.mem); free(h1.mem);
+    // constructor
+    uint32_t g2 = galloc(sizeof(Effect));
+    for (uint32_t i = 0; i < sizeof(Effect); i++) ((uint8_t *)gp(g2, sizeof(Effect)))[i] = (uint8_t)rnd();
+    Effect e2; memcpy(&e2, gp(g2, sizeof(Effect)), sizeof e2);
+    C->s.r[ECX] = g2; uint32_t r3 = call(0x6367fee8, 0, NULL);
+    Effect orig; memcpy(&orig, gp(g2, sizeof(Effect)), sizeof orig);
+    memcpy(gp(g2, sizeof(Effect)), &e2, sizeof e2);
+    uint32_t r4 = (uint32_t)((uint8_t *)effect_ctor(gp(g2, sizeof(Effect))) - C->mem);
+    check("effect_ctor", iter, "EAX", &r3, &r4, 4);
+    check("effect_ctor", iter, "object", &orig, gp(g2, sizeof(Effect)), sizeof orig);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -328,6 +389,7 @@ int main(int argc, char **argv) {
     M = emu_load_pe(E, host, "C:\\SPEECH\\msttssyn.dll", EMU_IMAGE_BASE);
     if (!M || !emu_dll_attach(E, M)) { fprintf(stderr, "load failed: %s\n", emu_error(E)); return 2; }
     decomp_guest_mem = C->mem;
+    decomp_load_delta = M->base - MSTTS_PREF_BASE;
     decomp_emu = E;
     for (int it = 0; it < iters; it++) {
         t_filter(0, it); t_filter(1, it); t_filter(2, it);
@@ -337,6 +399,7 @@ int main(int argc, char **argv) {
         t_lpc(it);
         t_period(it);
         t_effect(it);
+        if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
     printf("unit: %d checks, %d mismatches\n", cases, fails);
