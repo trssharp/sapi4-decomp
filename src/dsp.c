@@ -3,6 +3,7 @@
 // behave the same.
 #include "dsp.h"
 #include "x87.h"
+#include "crt_vc.h"
 
 void dsp_allpole(const float *a, int order, float *mem, float *x, int n) {
     for (; n > 0; n--, x++) {
@@ -78,4 +79,43 @@ double dsp_max_abs(const float *x, int n) {
         if (!(m >= a)) m = a;
     }
     return m;
+}
+
+void dsp_scale_b(float *x, int n, float g) {
+    for (; n > 0; n--, x++) *x = (float)((double)g * *x);
+}
+
+void dsp_fold_pulse(float *dst, int n, const float *src, int len) {
+    int h = len / 2;
+    int m = h > n ? n : h;
+    for (int i = 0; i < m; i++) dst[i] = src[i];
+    for (int i = m; i < n; i++) dst[i] = 0.0f;
+    for (int k = 0; k < m; k++) dst[n - m + k] = (float)((double)src[len - m + k] + dst[n - m + k]);
+}
+
+void dsp_place_halves(float *dst, const float *src, int off, int n, int len) {
+    for (int i = 0; i < n; i++) dst[off + i] = src[i];
+    int b = len - off - n + 1;
+    for (int i = 0; i < n; i++) dst[b + i] = src[n + i];
+}
+
+void dsp_add_halves(float *dst, const float *src, int off, int n, int len) {
+    for (int i = 0; i < n; i++) dst[off + i] = (float)((double)src[i] + dst[off + i]);
+    int b = len - off - n + 1;
+    for (int i = 0; i < n; i++) dst[b + i] = (float)((double)dst[b + i] + src[n + i]);
+}
+
+int dsp_cmp_float(const void *pa, const void *pb) {
+    double a = *(const float *)pa, b = *(const float *)pb;
+    if (a > b) return 1;
+    if (a < b) return -1;
+    return 0;
+}
+
+int dsp_sort_floats(float *x, int n) {
+    int sorted = 1;
+    for (int i = 1; i < n; i++)
+        if (x[i - 1] > x[i]) sorted = 0;
+    vc_qsort(x, (size_t)n, 4, dsp_cmp_float);
+    return sorted;
 }

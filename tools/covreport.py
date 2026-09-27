@@ -44,7 +44,35 @@ def main():
         rows.append(dict(addr=f["addr"], size=f["size"], insns=len(insns), hit=len(hit), dyn=dyn,
                          calls=calls.get(f["addr"], 0),
                          hitbytes=sum(s for a, s in f["code"] if a in ex)))
+    # dynamic call graph
+    endmap = {}
+    for f in F:
+        for a, sz in f["code"]:
+            endmap[a + sz] = f["addr"]
+    edges = {}
+    for fn in glob.glob(os.path.join(work, "cover", "*.edges")):
+        for line in open(fn):
+            r, t, n = line.split()
+            r = int(r, 16) + img.base
+            t = int(t, 16) + img.base
+            caller = endmap.get(r)
+            if caller is None:
+                continue
+            edges[(caller, t)] = edges.get((caller, t), 0) + int(n)
+    callers, callees = {}, {}
+    for (a, b), n in edges.items():
+        callers.setdefault(b, {})[a] = n
+        callees.setdefault(a, {})[b] = n
     reached = [r for r in rows if r["hit"]]
+    with open(os.path.join(work, "callgraph.txt"), "w") as fo:
+        for r in sorted(reached, key=lambda r: r["addr"]):
+            a = r["addr"]
+            fo.write("%08x dyn %d\n  from: %s\n  to:   %s\n" % (
+                a, r["dyn"], " ".join("%08x" % x for x in sorted(callers.get(a, {}))) or "(host)",
+                " ".join("%08x" % x for x in sorted(callees.get(a, {})))))
+    roots = [r["addr"] for r in reached if not callers.get(r["addr"])]
+    print("entered from the host only (COM methods, thread/window procs): %d" % len(roots))
+    json.dump(dict(edges=[[a, b, n] for (a, b), n in edges.items()], roots=roots), open(os.path.join(work, "callgraph.json"), "w"))
     tot_dyn = sum(r["dyn"] for r in rows)
     json.dump(dict(functions=rows, unknown_call_targets=unknown), open(os.path.join(work, "coverage.json"), "w"))
     with open(os.path.join(work, "coverage.txt"), "w") as fo:

@@ -32,6 +32,16 @@ static void cover_dump(void) {
         for (uint32_t i = 0; i < 0x1000000u; i++) if (arr[k][i]) fprintf(f, "%x %u\n", i, arr[k][i]);
         fclose(f);
     }
+    extern uint64_t *x86_cover_edges;
+    extern uint32_t *x86_cover_edge_n;
+    if (x86_cover_edges) {
+        snprintf(path, sizeof path, "%s/%d.edges", dir, (int)getpid());
+        FILE *f = fopen(path, "w");
+        if (!f) return;
+        for (uint32_t i = 0; i < (1u << 20); i++)
+            if (x86_cover_edges[i]) fprintf(f, "%x %x %u\n", (uint32_t)(x86_cover_edges[i] >> 32) - 0x01000000u, (uint32_t)x86_cover_edges[i] - 0x01000000u, x86_cover_edge_n[i]);
+        fclose(f);
+    }
 }
 #endif
 

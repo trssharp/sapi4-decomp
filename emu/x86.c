@@ -586,9 +586,25 @@ void x86_cover_call(uint32_t t) {
     uint32_t off = t - 0x01000000u;
     if (off < 0x1000000u) x86_cover_calls[off]++;
 }
+// dynamic call graph: (return address, target) pairs inside the first image, open addressing
+#define COVER_EDGES (1u << 20)
+uint64_t *x86_cover_edges;  // (ret << 32 | target), 0 = empty
+uint32_t *x86_cover_edge_n;
+void x86_cover_edge(uint32_t ret, uint32_t t) {
+    x86_cover_call(t);
+    if (ret - 0x01000000u >= 0x1000000u || t - 0x01000000u >= 0x1000000u) return;
+    if (!x86_cover_edges) { x86_cover_edges = calloc(COVER_EDGES, 8); x86_cover_edge_n = calloc(COVER_EDGES, 4); }
+    uint64_t k = (uint64_t)ret << 32 | t;
+    uint32_t h = (uint32_t)((k * 0x9E3779B97F4A7C15ull) >> 44) & (COVER_EDGES - 1);
+    while (x86_cover_edges[h] && x86_cover_edges[h] != k) h = (h + 1) & (COVER_EDGES - 1);
+    x86_cover_edges[h] = k;
+    x86_cover_edge_n[h]++;
+}
 #define COVER_CALL(t) x86_cover_call(t)
+#define COVER_EDGE(r, t) x86_cover_edge((r), (t))
 #else
 #define COVER_CALL(t) ((void)0)
+#define COVER_EDGE(r, t) ((void)0)
 #endif
 
 #ifdef X86_PROFILE
@@ -765,7 +781,7 @@ static void exec_generic(X86 *c) {
         if (t) EIP += (uint32_t)(int32_t)d;
         break; }
     case 0xE3: { int8_t d = (int8_t)fetch8(c); if (R[ECX] == 0) EIP += (uint32_t)(int32_t)d; break; }
-    case 0xE8: { int32_t d = (int32_t)fetch32(c); x86_push(c, EIP); EIP += (uint32_t)d; COVER_CALL(EIP); break; }
+    case 0xE8: { int32_t d = (int32_t)fetch32(c); x86_push(c, EIP); EIP += (uint32_t)d; COVER_EDGE(rd32(c, R[ESP]), EIP); break; }
     case 0xE9: { int32_t d = (int32_t)fetch32(c); EIP += (uint32_t)d; break; }
     case 0xEB: { int8_t d = (int8_t)fetch8(c); EIP += (uint32_t)(int32_t)d; break; }
     case 0xF1: { // host call trap: F1 lo hi
@@ -822,7 +838,7 @@ static void exec_generic(X86 *c) {
         modrm(c, &m, seg);
         switch (m.reg) {
         case 0: case 1: wrE(c, &m, osz, inc_dec(c, rdE(c, &m, osz), osz, m.reg)); break;
-        case 2: { uint32_t t = rdE(c, &m, 4); x86_push(c, EIP); EIP = t; COVER_CALL(t); break; }
+        case 2: { uint32_t t = rdE(c, &m, 4); x86_push(c, EIP); EIP = t; COVER_EDGE(rd32(c, R[ESP]), t); break; }
         case 4: EIP = rdE(c, &m, 4); break;
         case 6: { uint32_t v = rdE(c, &m, osz); if (osz == 2) { R[ESP] -= 2; wr16(c, R[ESP], (uint16_t)v); } else x86_push(c, v); break; }
         default: x86_fault(c, "unsupported FF /%d (far call/jmp)", m.reg);
@@ -1499,10 +1515,10 @@ L_K_GENERIC:
             L_K_PUSH_M: { uint32_t v = LD32(XEA(d)); PUSH(v); NEXT(); }
             L_K_JCC: if (cond(c, d->op)) next = d->imm; NEXT_BR();
             L_K_JMP: next = d->imm; NEXT_BR();
-            L_K_CALL: PUSH(next); next = d->imm; COVER_CALL(next); NEXT_BR();
+            L_K_CALL: PUSH(next); COVER_EDGE(next, d->imm); next = d->imm; NEXT_BR();
             L_K_RET: next = POP(); reg[ESP] += d->imm; NEXT_BR();
-            L_K_CALL_R: { uint32_t t = reg[d->src]; PUSH(next); next = t; COVER_CALL(t); NEXT_BR(); }
-            L_K_CALL_M: { uint32_t t = LD32(XEA(d)); PUSH(next); next = t; COVER_CALL(t); NEXT_BR(); }
+            L_K_CALL_R: { uint32_t t = reg[d->src]; PUSH(next); COVER_EDGE(next, t); next = t; NEXT_BR(); }
+            L_K_CALL_M: { uint32_t t = LD32(XEA(d)); PUSH(next); COVER_EDGE(next, t); next = t; NEXT_BR(); }
             L_K_JMP_R: next = reg[d->src]; NEXT_BR();
             L_K_JMP_M: next = LD32(XEA(d)); NEXT_BR();
             L_K_LEAVE: reg[ESP] = reg[EBP]; reg[EBP] = POP(); NEXT();

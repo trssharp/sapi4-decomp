@@ -23,3 +23,17 @@ void dsp_to_pcm16(int16_t *dst, const float *src, int n);
 void dsp_to_pcm8(uint8_t *dst, const float *src, int n);
 // @0x63671f31 stdcall: max |x[i]| (x[0] when n <= 1), returned as a double (ST0)
 double dsp_max_abs(const float *x, int n);
+
+// @0x636886c6 stdcall: a second copy of dsp_scale (the linker kept both)
+void dsp_scale_b(float *x, int n, float g);
+// @0x6368864b stdcall: fold a pulse of len samples into a period of n: the first half (at most n) is
+// copied to the start, the rest of dst cleared, and the second half added onto the end of dst.
+void dsp_fold_pulse(float *dst, int n, const float *src, int len);
+// @0x6368874c stdcall: place the two halves of src (n samples each) at dst[off..] and dst[len-off-n+1..]
+void dsp_place_halves(float *dst, const float *src, int off, int n, int len);
+// @0x636887a7 stdcall: the same, adding into dst
+void dsp_add_halves(float *dst, const float *src, int off, int n, int len);
+// @0x636886e3 cdecl: qsort comparator for floats (1 if a > b, -1 if a < b, else 0)
+int dsp_cmp_float(const void *a, const void *b);
+// @0x63688708 stdcall: sort x ascending (VC qsort); returns 1 if it was already sorted
+int dsp_sort_floats(float *x, int n);

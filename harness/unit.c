@@ -105,6 +105,41 @@ static void t_vec(int iter) {
     check("dsp_to_pcm8", iter, "dst", gp(g8, (uint32_t)k), o8, (uint32_t)k);
 }
 
+static void t_more(int iter) {
+    uint32_t a[5];
+    // fold_pulse: n period, len pulse
+    int n = rndi(1, 300), len = rndi(0, 600);
+    uint32_t gd = farr(h1, n), gs = farr(h2, len > 0 ? len : 1);
+    a[0] = gd; a[1] = (uint32_t)n; a[2] = gs; a[3] = (uint32_t)len;
+    call(0x6368864b, 4, a); dsp_fold_pulse(h1, n, h2, len);
+    check("dsp_fold_pulse", iter, "dst", gp(gd, 4u * n), h1, 4u * n);
+    // scale_b
+    float g = rndf();
+    a[0] = gd; a[1] = (uint32_t)n; a[2] = fbits(g);
+    call(0x636886c6, 3, a); dsp_scale_b(h1, n, g);
+    check("dsp_scale_b", iter, "x", gp(gd, 4u * n), h1, 4u * n);
+    // place/add halves into a buffer of len2 with off
+    int hn = rndi(0, 100), off = rndi(0, 50), len2 = off + 2 * hn + rndi(0, 50);
+    int tot = len2 + 2;
+    uint32_t gb = farr(h1, tot), gh = farr(h2, 2 * hn + 1);
+    a[0] = gb; a[1] = gh; a[2] = (uint32_t)off; a[3] = (uint32_t)hn; a[4] = (uint32_t)len2;
+    call(0x6368874c, 5, a); dsp_place_halves(h1, h2, off, hn, len2);
+    check("dsp_place_halves", iter, "dst", gp(gb, 4u * tot), h1, 4u * tot);
+    call(0x636887a7, 5, a); dsp_add_halves(h1, h2, off, hn, len2);
+    check("dsp_add_halves", iter, "dst", gp(gb, 4u * tot), h1, 4u * tot);
+    // sort: with duplicates and signed zeros
+    int sn = rndi(0, 200);
+    for (int i = 0; i < sn; i++) h3[i] = (rnd() & 3) ? (float)(rndi(-20, 20)) * 0.5f : ((rnd() & 1) ? 0.0f : -0.0f);
+    if (iter % 5 == 0) for (int i = 0; i < sn; i++) h3[i] = (float)i;   // already sorted
+    uint32_t gz = galloc(4u * (sn > 0 ? sn : 1));
+    memcpy(gp(gz, 4u * (sn > 0 ? sn : 1)), h3, 4u * (sn > 0 ? sn : 1));
+    a[0] = gz; a[1] = (uint32_t)sn;
+    uint32_t r1 = call(0x63688708, 2, a);
+    int r2 = dsp_sort_floats(h3, sn);
+    check("dsp_sort_floats", iter, "ret", &r1, &r2, 4);
+    check("dsp_sort_floats", iter, "x", gp(gz, 4u * (sn > 0 ? sn : 1)), h3, 4u * (sn > 0 ? sn : 0));
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -119,6 +154,7 @@ int main(int argc, char **argv) {
     for (int it = 0; it < iters; it++) {
         t_filter(0, it); t_filter(1, it); t_filter(2, it);
         t_vec(it);
+        t_more(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
     printf("unit: %d checks, %d mismatches\n", cases, fails);
