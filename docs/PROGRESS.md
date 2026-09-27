@@ -17,7 +17,7 @@ DLL keeps running around it) and must leave the output bit-identical:
 
 All three pass with every hook enabled. `SAPI4_HOOKS=none` gives the untouched original.
 
-## Where this stands (session 3, 2026-09-26)
+## Where this stands (session 4, 2026-09-27)
 
 Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`):
 
@@ -25,15 +25,18 @@ Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability
 |---|---|---|
 | static function list (excl. 73 import stubs; approximate) | ~1,000 | ~185,000 of .text 184,302 (boundaries approximate) |
 | reached by the corpus | 536 | 145,161 |
-| **decompiled and verified** | **170** (157 reached, 13 reached only by the unit tests) | **30,988** |
-| share of the reached set | 29.3% | 20.6% |
-| share of all guest instructions executed | | 94.6% |
+| **decompiled and verified** | **295** (263 reached, 32 reached only by the unit tests) | **74,175** |
+| share of the reached set | 49.1% | 49.1% |
+| share of all guest instructions executed | | 98.5% |
 
-Session 3 added 59 hooked functions (12.7 KB): the thread plumbing of the unit stage and the
-synthesizer, most of the alternative-unit search, and the core of the front end's rule machine (see
-"Done, session 3"). Unit selection is now complete except the lattice phrase rewrite 0x63685d72 and
-the never-reached tree query 0x6367233c; the synthesizer except its init 0x636819e6 (C++ exception
-frame) and resamplers (never reached).
+Session 4 added 125 hooked functions (43 KB): the rest of the rule machine (rule execution, rule match,
+the rule-set main loop, rule apply: 3 instances each), every rule procedure the three machines call
+(87 table entries: 60 wrappers that run another rule set, 27 with work of their own), and the
+lexicon: the ten word dictionaries and the Huffman-coded trie of the main lexicon (see "Done, session
+4" and "The front end, mapped").
+
+Session 3 added 59 (12.7 KB): the thread plumbing of the unit stage and the synthesizer, most of the
+alternative-unit search, and the rule machine's tape routines, condition interpreter and runner.
 
 History of the earlier sessions:
 
@@ -188,30 +191,24 @@ the output) and `src/x87.h` the x87 conversions (fistp, _ftol, the |x| idiom).
 small edits) - that is how the three rule-machine instances were matched; instance A differs in
 reading one position as int16 and in its apply guard.
 
-## The front end, mapped (session 3)
+## The front end, mapped (sessions 3 and 4)
 
-Which module does what was inferred from call counts of the original on probe texts (`tools/cover.sh`
-style coverage of single renders: "the the the the", three nonwords, four dictionary words, numbers).
-These attributions are **inferences from counts, not yet confirmed by reading every function**.
+Session 3 inferred roles from call counts on probe texts; session 4 read the code, which corrects one
+of them: the "nonword-only driver" at 0x63698f1a.. is two of the dictionaries below (morpheme / affix
+lists consulted when the main lexicon has no entry), not a separate letter-to-sound driver.
 
-| part | functions | bytes | done | role (inferred) |
-|---|---|---|---|---|
-| rule machine A (0x6368c997..) + callbacks (26 fns, 5.9 KB, table 0x63721cdc: 14 entries) | 15 | 14,016 | 9 fns, 2,203 B | runs 3x more on numbers than words: text normalisation |
-| rule machine B (0x636909b7..) + callbacks (13 fns, 1.3 KB, table 0x63721f3c: 14 entries) | 31 | 13,790 | 9 fns, 2,180 B | runs on every word, most on dictionary words: post-lexical / phrasing rules (least certain) |
-| rule machine C (0x63693ef8..) + callbacks (50 fns, 1.9 KB, table 0x63721f8c: 59 entries) | 61 | 13,035 | 10 fns, 2,188 B | 6x more rule tries on nonwords, and most of its callbacks run only for nonwords: **letter-to-sound** (plus stress/syllable rules that also run on known words) |
-| nonword-only driver 0x63698f1a..0x6369986b | 12 | 2,385 | 0 | called only for out-of-dictionary words: the letter-to-sound driver |
-| dictionary 0x6369986b..0x6369a4ea | 13 | 3,199 | 2 | 0x6369986b decodes an entry (<= 31 letters) from the 164 KB table at 0x636d4340 through a pair table at 0x636d413e (digram-style expansion into 0x63739910); 0x6369a0c9 searches the 111 KB table at 0x636fdbbc (many calls per word) |
-| word modules 0x63696cd4..0x63698f1a | 35 | 8,774 | some tape helpers | word loop, tables at 0x636b99a8 (35 KB) and 0x636c2a30 (22 KB) |
-| rest 0x6369a4ea..0x6369d000 | 48 | 10,943 | helpers | phrasing, prosody, text spans |
+| part | role | status |
+|---|---|---|
+| rule machine A (0x6368c997..) | text normalisation rules (numbers, abbreviations, prosody tags) | machine done; its 14 procedures done; the per-word driver around it (0x6368c49b, 0x6368f732, 0x6368bab2, ...: ~9 KB) not yet |
+| rule machine B (0x636909b7..) | post-lexical and phrasing rules (pauses, word classes) | done, with its 14 procedures |
+| rule machine C (0x63693ef8..) | letter-to-sound and dictionary lookup: its procedures call the dictionaries | done, with its 59 procedures |
+| main lexicon (0x6369986b, trie 0x63699bd5..0x6369a15f) | a letter trie coded as Huffman fields in a bit stream (0x636fdbb8, 111 KB), entry -> 18-bit offset (0x63722090) into a digram-coded pronunciation table (0x636d4340, 164 KB), with back-references between entries | done |
+| ten dictionaries (0x6369a4ea, 0x6369773d, ..., 0x636972c7) | sorted packed-key word lists by length and first letter (5- or 6-bit letter codes), each entry -> an n-bit offset into a digram-coded pronunciation; up to three fields ('!', '#' or '"' separated) written to tapes A, C, D | done: one C function, the variants described by data (row layout, search width, field order) |
+| word modules 0x63696cd4.. and 0x6369aaa4 (5.4 KB), 0x6369c9e6 (1.6 KB) | the word loop, syllables / stress, phrase assembly | not yet |
 
-Rule bytecode is data: A about 3.4 KB at 0x636a2519, B about 7.6 KB at 0x636a5ea1, C about 29 KB at
-0x636af2a1; the lexicon data is roughly 164 + 111 + 71 (.data 0x63722094) + 35 + 22 KB. None of it
-needs decompiling - the portable build loads it from the DLL at run time, like the voice data - but
-the decoders and the three rule-machine executors do.
-
-So "the lexicon and letter-to-sound" is about 16 KB of the code (rule machine C, the LTS driver, the
-dictionary decoders) plus the 59 small C callbacks; the rest of the front end's ~95 KB is the other
-two rule machines, normalisation glue and phrasing.
+Rule bytecode and the lexicon tables are data (A about 3.4 KB at 0x636a2519, B 7.6 KB at 0x636a5ea1,
+C 29 KB at 0x636af2a1; lexicon 164 + 111 + 71 KB, dictionaries 20-60 KB each); the portable build will
+load them from the DLL, like the voice data.
 
 ## Pitfalls found so far
 
