@@ -17,7 +17,7 @@ DLL keeps running around it) and must leave the output bit-identical:
 
 All three pass with every hook enabled. `SAPI4_HOOKS=none` gives the untouched original.
 
-## Where this stands (session 4, 2026-09-27)
+## Where this stands (session 5, 2026-09-27)
 
 Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`):
 
@@ -25,9 +25,19 @@ Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability
 |---|---|---|
 | static function list (excl. 73 import stubs; approximate) | ~1,000 | ~185,000 of .text 184,302 (boundaries approximate) |
 | reached by the corpus | 536 | 145,161 |
-| **decompiled and verified** | **299** (267 reached, 32 reached only by the unit tests) | **75,438** |
-| share of the reached set | 49.8% | 50.0% |
-| share of all guest instructions executed | | 98.5% |
+| **decompiled and verified** | **445** (391 reached, 54 reached only by the unit tests) | **122,604** |
+| share of the reached set | 72.9% | 80.8% |
+| share of all guest instructions executed | | 98.7% |
+
+Session 5 added 146 functions (47.2 KB): **the whole front end except one unused prosody mode** - the
+text input (wide text to single-byte, SAPI tags into the engine's escape sequences, line breaks,
+sentence splitting with its lexer), the word module's reader (escapes into events, user lexicon,
+phrase breaks, setjmp/longjmp error unwinding), machine A's per-phrase driver (durations, segments,
+pitch), the phrase output (phone list for the unit stage, index escapes back into tags, the "\Tp"
+phone converter path), the front-end thread, and its set-up (word objects, user lexicons, the front
+end object). And the second portable piece: **`make port-fe-check` runs text to phone lists with the
+C alone** - identical to the original front end on 62 texts over six voices (10,938 phones), with the
+DLL's data loaded at run time or baked in (`make port-fe-baked-check`). See "Done, session 5".
 
 Session 4 added 129 hooked functions (44.5 KB): the rest of the rule machine (rule execution, rule
 match, the rule-set main loop, rule apply: 3 instances each), every rule procedure the three machines
@@ -212,7 +222,31 @@ Negative controls were run for each group (one changed comparison or constant pe
 change was not detected it was confirmed to be unobservable (e.g. an equality the data never
 produces) or a generator was sharpened until it was.
 
-## The front end, mapped (sessions 3 and 4)
+## Done, session 5 (146 functions)
+
+| address(es) | name(s) | what | verified by |
+|---|---|---|---|
+| 0x6368c49b, 0x6368bab2, 0x6368f732, 0x6368fed5, 0x6368c6f1, 0x6368c3dc, 0x6368b8e1, 0x6368b7b1, 0x6368b87c, 0x6368c177, 0x6368c1e3, 0x6368c367, 0x63690187 | ph_run, ph_durations, ph_pitch, ph_target, ph_segments, ... | machine A's per-phrase driver: rule set runs, duration and accent heuristics, segments, pitch targets | golden, hookdiff, unit (random word objects; the original divides by zero on some, those are skipped) |
+| 0x6368aca2, 0x6368abe3, 0x6368af3e, 0x6368ac2f.. | ev_* | the phrase event list (nodes recycled through a free list) | golden, hookdiff, unit |
+| 0x63696cd4, 0x6369378d, 0x6368b221, 0x63688d0a, 0x63688d9c, 0x6368b17a, 0x63688964, 0x6368b198, 0x6368899b, 0x63696dd8.. | fe_c_run, fe_b_run, fe_word_* | the word module's entry points and the output string for the phrase | golden, hookdiff |
+| 0x636822e4 .. 0x6368337f (14) | txt_* | text rewriting before tokenising: emoticons, addresses, numbers, "approximately", characters outside ASCII | unit (texts built from those cases), golden |
+| 0x6369d620, 0x6369c505 .. 0x6369c9e6 (9) | lex_next, lex_* | the lexer: token DFA, abbreviations, titles, common words, emoticons | unit (token streams; the lexer's own word tables) |
+| 0x6369aaa4 and 15 helpers | split_sentences, quotes_*, brackets_*, word_* | the sentence splitter (5.4 KB state machine): brackets, quotes, initials, roman numerals, abbreviations | unit (generated texts, several sentences per call, a 51-deep bracket overflow), golden |
+| 0x6367f5ef, 0x6367f53b | text_sentences, text_prepare | the text cut into sentences, line breaks | unit, golden |
+| 0x6368043f, 0x636840f3, 0x63680bb7, 0x636803e4, 0x63680244, 0x6368030a, 0x63680f05, 0x63680f2d, 0x636812b6, 0x636812da, 0x636748d1, 0x63674978, 0x6367499a | fe_tags_to_escapes, fe_text_input, ... | SAPI tags into escape sequences with the numbered entry table; the text entry point | unit (every tag keyword, well and badly formed), golden, hookdiff |
+| 0x63689357 (+ 0x63689726, 0x63689fee, 0x63689fc4), 0x6368aa05, 0x63689bc0, 0x63689fad, 0x636896e3, 0x63688b27, 0x63677575, 0x6368ac44 .. 0x6368aee5, 0x63688fb3, 0x636890e2 | word_run, rd_*, ev_add_* | the word module's reader: escapes into events and settings, words onto the tape, phrase breaks by length; errors unwind with longjmp (kept in C: the three functions that can longjmp are verified through their caller) | unit (texts of words and escapes, a user lexicon; .data, the word object and its events compared), golden, hookdiff |
+| 0x63676ec7, 0x6367584b, 0x636758d1, 0x63675ffc, 0x63675fb5 | user_lex_* , phones_to_codes | user lexicon lookup and phone-name conversion | unit, golden |
+| 0x63680c6e, 0x63680c3f, 0x636779a5, 0x63677af9, 0x63680ecd, 0x63683653, 0x63683765, 0x6367de02, 0x6367de34 | fe_after_feed, ... | after each part read: index escapes back into tags for the back end, the end-of-text message, pitch | golden, hookdiff |
+| 0x6367764f, 0x636761ab, 0x63677b56, 0x636765ea, 0x636765a5, 0x6367678b, 0x63675f6b, 0x63676130, 0x63676159, 0x63677da6, 0x636778a7, 0x63677911, 0x6368021c, 0x63674478 | words_phrase, phone_list, ... | the phrase output: tapes copied out, phones with durations and interpolated pitch, the PhoneIn list | golden, hookdiff, port-fe-check |
+| 0x636837a4, 0x636836b8, 0x63684233 | fe_phrase_out, fe_set_pitch_level, fe_thread | the phone list with tag records and the "\Tp" converter path; the front-end thread | golden, hookdiff, port-fe-check |
+| 0x63677045, 0x63688803, 0x63689051, 0x636888e1, 0x63688a30, 0x63688bc2, 0x6368b129, 0x6368abc1, 0x636750ea, 0x6367518a, 0x6369aa68, 0x6367f50a, 0x636834d4, 0x636835bc, 0x636803b5, ... | words_open, word_obj_*, fe_ctor, fe_setup | set-up: word objects, user lexicons, the per-voice input buffers, the front end object | golden, hookdiff, port-fe-check |
+
+Not decompiled in the front end: the alternative prosody of mode 0 (0x636798ce, 0x6367930a,
+0x636787f9, 0x6367877e and helpers, ~5 KB; the engine always opens mode 1), the text mode that
+0x636744c4 converts (never used by SAPI's text calls), and the user lexicon file reader 0x636751e0
+(the emulator has no such file).
+
+## The front end, mapped (sessions 3 to 5)
 
 Session 3 inferred roles from call counts on probe texts; session 4 read the code, which corrects one
 of them: the "nonword-only driver" at 0x63698f1a.. is two of the dictionaries below (morpheme / affix
@@ -220,12 +254,13 @@ lists consulted when the main lexicon has no entry), not a separate letter-to-so
 
 | part | role | status |
 |---|---|---|
-| rule machine A (0x6368c997..) | text normalisation rules (numbers, abbreviations, prosody tags) | machine done; its 14 procedures done; the per-word driver around it (0x6368c49b, 0x6368f732, 0x6368bab2, ...: ~9 KB) not yet |
+| rule machine A (0x6368c997..) | text normalisation rules (numbers, abbreviations, prosody tags) | done, with its procedures and the per-phrase driver around it (session 5) |
 | rule machine B (0x636909b7..) | post-lexical and phrasing rules (pauses, word classes) | done, with its 14 procedures |
 | rule machine C (0x63693ef8..) | letter-to-sound and dictionary lookup: its procedures call the dictionaries | done, with its 59 procedures |
 | main lexicon (0x6369986b, trie 0x63699bd5..0x6369a15f) | a letter trie coded as Huffman fields in a bit stream (0x636fdbb8, 111 KB), entry -> 18-bit offset (0x63722090) into a digram-coded pronunciation table (0x636d4340, 164 KB), with back-references between entries | done |
 | ten dictionaries (0x6369a4ea, 0x6369773d, ..., 0x636972c7) | sorted packed-key word lists by length and first letter (5- or 6-bit letter codes), each entry -> an n-bit offset into a digram-coded pronunciation; up to three fields ('!', '#' or '"' separated) written to tapes A, C, D | done: one C function, the variants described by data (row layout, search width, field order) |
-| word modules 0x63696cd4.. and 0x6369aaa4 (5.4 KB), 0x6369c9e6 (1.6 KB) | the word loop, syllables / stress, phrase assembly | not yet |
+| word modules 0x63696cd4.. and 0x6369aaa4 (5.4 KB), 0x6369c9e6 (1.6 KB) | the word loop, the sentence splitter and its lexer | done (session 5) |
+| text input, reader, phrase output, thread (0x636840f3, 0x63689357, 0x6367764f, 0x636837a4, 0x63684233 ...) | tags into escapes, the word module's tape, the phone list, the thread | done (session 5) |
 
 Rule bytecode and the lexicon tables are data (A about 3.4 KB at 0x636a2519, B 7.6 KB at 0x636a5ea1,
 C 29 KB at 0x636af2a1; lexicon 164 + 111 + 71 KB, dictionaries 20-60 KB each); the portable build will
@@ -290,6 +325,31 @@ load them from the DLL, like the voice data.
 * **Random bytecode can hang the original.** Unit tests of the rule machine generate structured
   bytecode (every block closed, filler after each closer) and abort if the original faults, since a
   faulted emulator CPU leaves the next comparison meaningless.
+
+* **A null guest pointer is not NULL in C.** In the hook build `GP(T, 0)` is the start of guest memory,
+  not a null host pointer; a loop that stopped at `!GP(...)` never ended. Linked lists keep their links
+  as the raw stored values (`EvLink`) and test those.
+* **Host locals are not guest memory.** Storing the address of a C local into a guest-pointer field
+  (`GPSET`) hands the original an address it cannot read; such locals are passed as host pointers
+  and converted in the adapter, or placed on the guest stack (`vc_stack_push`).
+* **longjmp.** The word module's reader unwinds errors with setjmp/longjmp through three functions.
+  In C a host setjmp/longjmp is exact as long as every frame in between is C, so those three are
+  verified through their caller only (marked `HOOKIN` in the hook list, counted by `tools/progress.py`).
+* **Functions that look void.** `voice_rec` (0x6367de02) returns a pointer to the record's data, which
+  one caller uses; the hook without it failed only `make check`'s RoboSoft reference.
+* **List order.** One of the six event-adding functions puts its node at the head of the list, the
+  others at the tail; the unit test comparing the event lists found it.
+* **Stale locals in the original.** A few paths read a local no one wrote (the escape formatted last,
+  a number an escape did not carry); the engine never produces those inputs, and the tests avoid them.
+* **Tests and the original's state.** A test that runs the original and then the C from the same
+  starting point must also restore what the original changed outside the obvious outputs (here the
+  event free list's links); otherwise the second run starts elsewhere.
+* **The portable build's own traps.** Tables in the DLL's data that hold pointers must be read field by
+  field (`DLLPTR`), not as C structs whose pointers are wider; element sizes written as numbers (a
+  queue's 20-byte items) must be `sizeof`; the portable front end found both.
+* **Negative controls and make.** make compares timestamps to the second: a control that edits a
+  source and rebuilds within the same second as the previous build gets the old binary. The controls
+  delete the binary first.
 
 ## What is left, and the obstacles
 
