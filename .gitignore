@@ -1,0 +1,12 @@
+# Microsoft's binaries, voice data and anything rendered from them never enter the repository.
+data/
+samples/
+work/
+build/
+*.dll
+*.DLL
+*.vce
+*.cfg
+*.wav
+*.exe
+__pycache__/
