@@ -27,6 +27,16 @@ void *vc_calloc(size_t n, size_t size) {
     memset(decomp_guest_mem + p, 0, (size_t)t);
     return decomp_guest_mem + p;
 }
+void *vc_stack_push(uint32_t size, uint32_t below) {
+    (void)below;
+    X86 *c = emu_cpu(decomp_emu);
+    c->s.r[ESP] -= size;
+    return decomp_guest_mem + c->s.r[ESP];
+}
+void vc_stack_pop(void *frame, uint32_t size, uint32_t below) {
+    (void)frame; (void)below;
+    emu_cpu(decomp_emu)->s.r[ESP] += size;
+}
 void vc_free(void *p) {
     if (p) emu_free(decomp_emu, (uint32_t)((uint8_t *)p - decomp_guest_mem));
 }

@@ -53,6 +53,8 @@ void vc_free(void *p) { free(p); }
 void *vc_realloc(void *p, size_t n) { return realloc(p, n); }
 void *vc_calloc(size_t n, size_t size) { return calloc(n, size); }
 void vc_sleep(uint32_t ms) { (void)ms; }
+void *vc_stack_push(uint32_t size, uint32_t below) { char *p = malloc((size_t)size + below); return p ? p + below : NULL; }
+void vc_stack_pop(void *frame, uint32_t size, uint32_t below) { (void)size; free((char *)frame - below); }
 void vc_EnterCriticalSection(void *cs) { (void)cs; }
 void vc_LeaveCriticalSection(void *cs) { (void)cs; }
 int32_t vc_SetEvent(uint32_t h) { (void)h; return 1; }

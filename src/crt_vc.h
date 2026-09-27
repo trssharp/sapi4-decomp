@@ -15,6 +15,13 @@ void *vc_malloc(size_t n);
 void vc_free(void *p);
 void *vc_realloc(void *p, size_t n);
 void *vc_calloc(size_t n, size_t size);
+// A function's stack frame, for locals whose address the code passes to other functions: `size` bytes,
+// and `below` more under them that the code may also touch. The hook build puts it on the guest stack
+// right under the return address, where the original's frame was, and moves the guest ESP below it
+// until vc_stack_pop (so that original code called meanwhile uses the stack as it did); a portable
+// build allocates it.
+void *vc_stack_push(uint32_t size, uint32_t below);
+void vc_stack_pop(void *frame, uint32_t size, uint32_t below);
 // KERNEL32 Sleep: the engine yields its worker threads with Sleep(0). Nothing to do in a single-threaded
 // build; the hook build advances the emulator's virtual clock and yields when the hook returns.
 void vc_sleep(uint32_t ms);

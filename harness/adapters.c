@@ -362,3 +362,12 @@ void hk_vm_try_2(Emu *e, X86 *c) { E_RET(vm_try(2, AI(0), AI(1), GPH(RuleHdr, A(
 void hk_vm_match_0(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)vm_match(0, AI(0), AI(1))); }
 void hk_vm_match_1(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)vm_match(1, AI(0), AI(1))); }
 void hk_vm_match_2(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)vm_match(2, AI(0), AI(1))); }
+void hk_vm_apply_0(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | vm_apply(0, AI(0), GPH(RuleHdr, A(1), sizeof(RuleHdr)))); }
+void hk_vm_apply_1(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | vm_apply(1, AI(0), GPH(RuleHdr, A(1), sizeof(RuleHdr)))); }
+void hk_vm_apply_2(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | vm_apply(2, AI(0), GPH(RuleHdr, A(1), sizeof(RuleHdr)))); }
+void hk_vm_exec_0(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | vm_exec(0)); }
+void hk_vm_exec_1(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | vm_exec(1)); }
+void hk_vm_exec_2(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | vm_exec(2)); }
+void hk_vm_main_0(Emu *e, X86 *c) { E_RET(vm_main(0, AI(0), AI(1), GPH(int16_t, A(2), 2))); }
+void hk_vm_main_1(Emu *e, X86 *c) { E_RET(vm_main(1, AI(0), AI(1), GPH(int16_t, A(2), 2))); }
+void hk_vm_main_2(Emu *e, X86 *c) { E_RET(vm_main(2, AI(0), AI(1), GPH(int16_t, A(2), 2))); }

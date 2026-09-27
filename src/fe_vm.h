@@ -73,23 +73,35 @@ typedef struct RunVM {
     uint32_t nvars;         // how many bytes that clear covers (8, 7, 30)
 } RunVM;
 extern const RunVM run_vm[3];
-// @0x6368e53d and copies (not decompiled yet): execute one rule; AL = success
+// @0x6368e53d / 0x63692568 / 0x63695aaf: execute one context opcode at *pc at position pos, moving in
+// the direction `step`: tests (literals, classes, variables), tape switches, filler skips,
+// alternatives and optional parts (pushing choice points for vm_run), and repetitions. AL = success
+// (for the plain class tests 0xfa / 0xfc, the class table byte itself).
 uint8_t vm_exec(int inst);
 // @0x6368e30f and copies: run the rule list at pc+1 up to 0xff, backtracking through the choice
 // points on failure; AL = 1 if it ran through
 uint8_t vm_run(int inst);
 
-// a rule header (the fields vm_try reads)
+// the segment a rule is tried on (what vm_try and vm_apply get; it lies 0x30 bytes into a larger
+// object whose per-character counts, int32 indexed by the character, start at -0x30)
 typedef struct RuleHdr {
-    int16_t _0;
-    int16_t left;           // 0x02 offset of the rule's focus from the match start
-    int16_t len;            // 0x04 input length the rule needs
-    uint8_t _6[0x293 - 6];
+    int16_t kind;           // 0x00 (rule opcode 0xfe,2 sets it: 0xb0 / 0x15f / 0x5bb per instance)
+    int16_t left;           // 0x02 the segment's start on the tapes
+    int16_t len;            // 0x04 its end
+    uint8_t _6[0x290 - 6];
+    int16_t max;            // 0x290 the largest advance so far (or the last one, if !track)
+    uint8_t track;          // 0x292
     uint8_t applied;        // 0x293
     GPTR(char) tape;        // 0x294 the current tape after trying it
+    GPTR(char) out;         // 0x298 the output tape
 } RuleHdr;
-// @0x6368f187 and copies (not decompiled yet): apply the rule's output; AL = success
+// @0x6368f187 / 0x636931b1 / 0x636966f8: apply the rule's output: either a procedure from the
+// instance's callback table (opcode 0xfe,n) or a replacement string written over the matched span
+// (literals, variables, class maps, tape switches, filler), keeping the per-character counts
+// current. AL = success.
 uint8_t vm_apply(int inst, int32_t a0, RuleHdr *r);
+// the rule procedures (0xfe,n; n >= 3), called through the instance's table: AL = success
+uint8_t vm_callback(int inst, uint8_t n, int16_t *left, int16_t *len);
 // @0x6368d896 / 0x636918d6 / 0x63694e1a: try one rule at position a1: match, run the left context
 // backwards and the right context forwards, then apply. AL = 1 if applied. prev_eax is the caller's EAX
 // (its upper half shows in the result and in what is passed on).
@@ -111,3 +123,11 @@ extern const MatchVM match_vm[3];
 // and a maximum, embedded conditions). Returns the position after the match, 0 if it fails. `back` is
 // where opcode 0xeb resumes (the caller passes the rule's input length).
 int16_t vm_match(int inst, int32_t at, int32_t back);
+
+// @0x6368c997 / 0x636909b7 / 0x63693ef8: run rule set `mode` over the segment s+1..*pend of the tapes
+// (opened as a gap first, closed again at the end; *pend follows the segment's growth): per rule, its
+// type says how to scan (forward / backward, anchored on a character or at every position, every match
+// or the first, single rules or groups) and vm_try tries it. Keeps per-character counts of the segment
+// so that rules whose characters do not occur are skipped. AL = whether any rule applied (the rest of
+// EAX as the original leaves it).
+uint32_t vm_main(int inst, int32_t mode, int32_t s, int16_t *pend);

@@ -78,13 +78,9 @@ void voc_resample_flush(uint32_t obj, uint32_t method) {
     guest_call(method, 0, NULL);
 }
 
-uint8_t vm_exec(int inst) {
-    static const uint32_t fn[3] = { 0x6368e53d, 0x63692568, 0x63695aaf };
-    return (uint8_t)guest_call(fn[inst], 0, NULL);
-}
-
-uint8_t vm_apply(int inst, int32_t a0, RuleHdr *r) {
-    static const uint32_t fn[3] = { 0x6368f187, 0x636931b1, 0x636966f8 };
-    uint32_t a[2] = { (uint32_t)a0, host_to_guest_ptr(r) };
-    return (uint8_t)guest_call(fn[inst], 2, a);
+uint8_t vm_callback(int inst, uint8_t n, int16_t *left, int16_t *len) {
+    static const uint32_t table[3] = { 0x63721cd0, 0x63721f30, 0x63721f80 };
+    uint32_t fn = CODEADDR(DLLVAR(uint32_t, table[inst])[n]);
+    uint32_t a[2] = { host_to_guest_ptr(left), host_to_guest_ptr(len) };
+    return (uint8_t)guest_call(fn, 2, a);
 }

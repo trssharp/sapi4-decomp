@@ -216,10 +216,18 @@ typedef struct { uint32_t a, n; uint8_t *save, *orig; } Region;
 static Region regs[64];
 static int nregs;
 static void reg_add(uint32_t a, uint32_t n) { regs[nregs++] = (Region){ a, n, malloc(n), malloc(n) }; memcpy(regs[nregs - 1].orig, gp(a, n), n); }
-static void reg_save(void) { for (int i = 0; i < nregs; i++) { memcpy(regs[i].save, gp(regs[i].a, regs[i].n), regs[i].n); memcpy(gp(regs[i].a, regs[i].n), regs[i].orig, regs[i].n); } }
+// (all saved before any is restored: regions may overlap)
+static void reg_save(void) {
+    for (int i = 0; i < nregs; i++) memcpy(regs[i].save, gp(regs[i].a, regs[i].n), regs[i].n);
+    for (int i = nregs - 1; i >= 0; i--) memcpy(gp(regs[i].a, regs[i].n), regs[i].orig, regs[i].n);
+}
 static void reg_check(const char *fn, int iter) {
     for (int i = 0; i < nregs; i++) {
         char what[32]; snprintf(what, sizeof what, "region %d", i);
+        if (getenv("VDBG") && memcmp(regs[i].save, gp(regs[i].a, regs[i].n), regs[i].n))
+            for (uint32_t j = 0; j < regs[i].n; j++)
+                if (regs[i].save[j] != ((uint8_t *)gp(regs[i].a, regs[i].n))[j])
+                    fprintf(stderr, "  region %d +%u (%08x): orig %02x C %02x\n", i, j, regs[i].a + j, regs[i].save[j], ((uint8_t *)gp(regs[i].a, regs[i].n))[j]);
         check(fn, iter, what, regs[i].save, gp(regs[i].a, regs[i].n), regs[i].n);
         free(regs[i].save); free(regs[i].orig);
     }
@@ -960,6 +968,256 @@ static void t_match(int iter) {
     for (int q = 0; q < 3; q++) wr32(C, gaddr(vm->tapes) + 4u * q, save_t[q]);
 }
 
+// rule apply (replacement strings and the 0xfe,1 / 0xfe,2 forms; the procedures run in the corpus)
+static void t_apply(int iter) {
+    static const uint32_t fn[3] = { 0x6368f187, 0x636931b1, 0x636966f8 };
+    static const uint32_t wt[3] = { 0x63738cd4, 0x637393bc, 0x63739584 }, p2g[3] = { 0x63739200, 0x637393d8, 0x637395bc },
+        outg[3] = { 0x63738cb0, 0x637393a4, 0x6373956c }, varg[3] = { 0x63738ce0, 0x637393c4, 0x63739590 },
+        tabg[3] = { 0x63739204, 0x637393dc, 0x637395bc };
+    int k = iter % 3;
+    const RuleVM *vm = &rule_vm[k];
+    uint32_t save[6], gt[6];
+    for (int q = 0; q < 6; q++) {
+        gt[q] = galloc(600);
+        for (int i = 0; i < 600; i++) ((uint8_t *)gp(gt[q], 600))[i] = (uint8_t)((q == 5) ? rndi(0, 3) : rndi(0x0e, 0xa1));
+        save[q] = rd32(C, gaddr(vm->tape[q])); wr32(C, gaddr(vm->tape[q]), gt[q]);
+    }
+    uint32_t stab[3]; for (int q = 0; q < 3; q++) stab[q] = rd32(C, gaddr(tabg[k]) + 4u * q);
+    uint16_t stop; memcpy(&stop, gp(gaddr(vm->top), 2), 2);
+    int16_t top = 400; memcpy(gp(gaddr(vm->top), 2), &top, 2);
+    uint32_t swt = rd32(C, gaddr(wt[k])), sp2 = rd32(C, gaddr(p2g[k])), spc = rd32(C, gaddr(vm->pc));
+    uint8_t sout = *(uint8_t *)gp(gaddr(outg[k]), 1), svars[16]; memcpy(svars, gp(gaddr(varg[k]), 16), 16);
+    int nv = run_vm[k].nvars < 7 ? (int)run_vm[k].nvars : 7;   // (B's variables end where its tape 5 pointer is)
+    for (int i = 0; i < nv; i++) ((uint8_t *)gp(gaddr(varg[k]), 16))[i] = (uint8_t)rndi(0, 0xa1);
+    *(uint8_t *)gp(gaddr(outg[k]), 1) = (uint8_t)rndi(0, 0x19);
+    int32_t p2 = rndi(0, 8);
+    if (k != 2) wr32(C, gaddr(p2g[k]), (uint32_t)p2);
+    else { memcpy(gp(gaddr(p2g[k]), 2), &p2, 2); p2 = (int32_t)rd32(C, gaddr(p2g[k])); }
+    uint32_t obj = galloc(0x430), gr = obj + 0x30;   // (counts reach 0x30 + 4 * 0xff)
+    uint8_t *o = gp(obj, 0x430);
+    for (int i = 0; i < 0x430; i++) o[i] = (uint8_t)rnd();
+    int16_t left = (int16_t)rndi(20, 60), len = (int16_t)(left + rndi(0, 30));
+    memcpy(o + 0x32, &left, 2); memcpy(o + 0x34, &len, 2);
+    o[0x30 + 0x292] = (uint8_t)(rnd() & 1);
+    wr32(C, gr + 0x298, gt[rndi(0, 5)]);
+    // bytecode: the byte vm_apply steps over, then the output
+    uint32_t gc = galloc(64); uint8_t *code = gp(gc, 64);
+    int n = 0;
+    code[n++] = 0xf3;
+    if (iter % 7 == 0) { code[n++] = 0xfe; code[n++] = (uint8_t)rndi(1, 2); }
+    else {
+        if (rnd() & 1) code[n++] = 0xe9;
+        int m = rndi(0, 10);
+        for (int i = 0; i < m; i++) {
+            static const uint8_t ops[] = { 0xec, 0xee, 0xef, 0xf0, 0xf1, 0xf8, 0xfd, 0x20, 0x41, 0x7e };
+            uint8_t op = ops[rnd() % sizeof ops];
+            code[n++] = op;
+            if (op == 0xef || op == 0xf1) code[n++] = (uint8_t)rndi(0, 2);
+            else if (op == 0xee || op == 0xf0) code[n++] = (uint8_t)rnd();   // (an operand byte, ignored)
+            else if (op == 0xf8) code[n++] = (uint8_t)rndi(0, 6);
+            else if (op == 0xfd) code[n++] = (uint8_t)rndi(0, nv - 1);
+        }
+        code[n++] = 0xff;
+    }
+    wr32(C, gaddr(vm->pc), gc);
+    for (int q = 0; q < 3; q++) wr32(C, gaddr(tabg[k]) + 4u * q, gt[rndi(0, 5)]);
+    if (k == 2) { memcpy(gp(gaddr(p2g[k]), 2), &p2, 2); p2 = (int32_t)rd32(C, gaddr(p2g[k])); }
+    int32_t a0 = rndi(0, 39);
+    for (int q = 0; q < 6; q++) reg_add(gt[q], 600);
+    reg_add(obj, 0x430);
+    reg_add(gaddr(wt[k]), 4); reg_add(gaddr(vm->pc), 4); reg_add(gaddr(run_vm[k].abort), 4);
+    uint32_t a[2] = { (uint32_t)a0, gr };
+    emu_set_insn_budget(E, 5000000);
+    uint32_t r1 = call(fn[k], 2, a) & 0xff;
+    emu_set_insn_budget(E, 0);
+    if (E->failed) {
+        fprintf(stderr, "vm_apply case %d (instance %d): the original did not finish (%s); code", iter, k, emu_error(E));
+        for (int i = 0; i < n; i++) fprintf(stderr, " %02x", code[i]);
+        fprintf(stderr, "\n");
+        exit(1);
+    }
+    reg_save();
+    uint32_t r2 = vm_apply(k, a0, gp(gr, sizeof(RuleHdr)));
+    check("vm_apply", iter, "AL", &r1, &r2, 4);
+    reg_check("vm_apply", iter);
+    for (int q = 0; q < 3; q++) wr32(C, gaddr(tabg[k]) + 4u * q, stab[q]);
+    wr32(C, gaddr(wt[k]), swt); wr32(C, gaddr(p2g[k]), sp2); wr32(C, gaddr(vm->pc), spc);
+    *(uint8_t *)gp(gaddr(outg[k]), 1) = sout; memcpy(gp(gaddr(varg[k]), 16), svars, 16);
+    for (int q = 0; q < 6; q++) wr32(C, gaddr(vm->tape[q]), save[q]);
+    memcpy(gp(gaddr(vm->top), 2), &stop, 2);
+}
+
+// one context opcode of the rule executor, on random state
+static void t_exec(int iter) {
+    static const uint32_t fn[3] = { 0x6368e53d, 0x63692568, 0x63695aaf }, sv[3] = { 0x637392dc, 0x637394a4, 0x63739684 };
+    int k = iter % 3;
+    const CondVM *cv = &cond_vm[k];
+    const MatchVM *mv = &match_vm[k];
+    const RunVM *rv = &run_vm[k];
+    int small = (iter & 2) != 0;
+    uint32_t gtape[3], save_t[3];
+    for (int q = 0; q < 3; q++) {
+        gtape[q] = galloc(256);
+        uint8_t *t = gp(gtape[q], 256);
+        memset(t, 0x0e, 256);
+        for (int i = 1; i < 200; i++)
+            t[i] = (rnd() % 5 == 0) ? 0x7e : small ? (uint8_t)rndi(1, 4) : (uint8_t)rndi(0, 0xa1);
+        save_t[q] = rd32(C, gaddr(cv->tapes) + 4u * q);
+        wr32(C, gaddr(cv->tapes) + 4u * q, gtape[q]);
+    }
+    // snapshot every global the executor (and the condition interpreter it calls) can touch
+    uint32_t gl[] = { rv->pc, rv->cur, sv[k], cv->saved, rv->pos, rv->pos0, rv->step, rv->nch, rv->flag, cv->ch,
+                      cv->bound, mv->last, mv->maxcnt, mv->clsb };
+    uint32_t gs[] = { 4, 4, 4, 4, 2, 2, 2, 2, 1, 1, 2, 2, 2, 1 };
+    enum { NG = sizeof gl / sizeof gl[0] };
+    uint8_t sg[NG][4];
+    for (int i = 0; i < NG; i++) memcpy(sg[i], gp(gaddr(gl[i]), gs[i]), gs[i]);
+    uint32_t ar[] = { rv->tries, rv->cpos, rv->cpc, rv->ctape, rv->cpos0, rv->ckind };
+    uint32_t as[] = { 8, 16, 32, 32, 16, 16 };
+    uint8_t sa[6][32];
+    for (int i = 0; i < 6; i++) memcpy(sa[i], gp(gaddr(ar[i]), as[i]), as[i]);
+    uint8_t *vars = gp(gaddr(cv->vars), 16);
+    uint8_t svars[16]; memcpy(svars, vars, 16);
+    int nv = rv->nvars < 7 ? (int)rv->nvars : 7;
+    for (int i = 0; i < nv; i++) vars[i] = (rnd() % 3) ? 0 : small ? (uint8_t)rndi(1, 4) : (uint8_t)rndi(1, 0xa1);
+    wr32(C, gaddr(rv->cur), gtape[rnd() % 3]); wr32(C, gaddr(sv[k]), gtape[rnd() % 3]); wr32(C, gaddr(cv->saved), gtape[rnd() % 3]);
+    int16_t P = (int16_t)rndi(20, 180), A = (int16_t)rndi(-1, 1), S = (rnd() & 1) ? 1 : -1, nch = (int16_t)rndi(0, 3);
+    memcpy(gp(gaddr(rv->pos), 2), &P, 2); memcpy(gp(gaddr(rv->pos0), 2), &A, 2);
+    memcpy(gp(gaddr(rv->step), 2), &S, 2); memcpy(gp(gaddr(rv->nch), 2), &nch, 2);
+    *(uint8_t *)gp(gaddr(rv->flag), 1) = (uint8_t)(rnd() & 1);
+    for (int i = 0; i < 6; i++) if (ar[i] != rv->cpc && ar[i] != rv->ctape) for (uint32_t j = 0; j < as[i]; j++) ((uint8_t *)gp(gaddr(ar[i]), as[i]))[j] = (uint8_t)rndi(0, 5);
+    uint32_t gc = galloc(256); uint8_t *code = gp(gc, 256);
+    for (int j = 0; j < 8; j++) wr32(C, gaddr(rv->cpc) + 4u * j, gc);
+    for (int j = 0; j < 8; j++) wr32(C, gaddr(rv->ctape) + 4u * j, gtape[rnd() % 3]);
+    int n = 0;
+    static const uint8_t ops[] = { 0xea, 0xeb, 0xec, 0xed, 0xee, 0xef, 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7,
+                                   0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0x00 };
+    uint8_t op = ops[rnd() % sizeof ops];
+    if (op == 0) op = small ? (uint8_t)rndi(1, 4) : (uint8_t)rndi(0, 0xe9);
+    code[n++] = op;
+    switch (op) {
+    case 0xea: case 0xfd: code[n++] = (uint8_t)rndi(0, nv - 1); break;
+    case 0xee: case 0xf0: code[n++] = (uint8_t)rnd(); break;
+    case 0xef: case 0xf1: code[n++] = (uint8_t)rndi(0, 2); break;
+    case 0xf2: case 0xf3: code[n++] = small ? (uint8_t)rndi(1, 4) : (uint8_t)rndi(0, 0xa1); break;
+    case 0xf9: case 0xfa: case 0xfb: case 0xfc: code[n++] = (uint8_t)rndi(0, 6); break;
+    case 0xf5: case 0xf6: {
+        code[n++] = (uint8_t)rndi(0, 3);
+        int m = rndi(0, 6);
+        for (int i = 0; i < m; i++) code[n++] = (uint8_t)rndi(0x20, 0x60);
+        code[n++] = op; code[n++] = 0; code[n++] = 0x33;
+        break;
+    }
+    case 0xf7:
+        code[n++] = (uint8_t)rndi(0, 3); code[n++] = (uint8_t)rndi(0, 3);
+        cond_ops(code, &n, 3); code[n++] = 0xf7; break;
+    case 0xf4:
+        code[n++] = (uint8_t)rndi(0, 2); code[n++] = (rnd() % 4) ? (uint8_t)rndi(0, 5) : 0xdc;
+        cond_ops(code, &n, 2); code[n++] = 0xf4; break;
+    case 0xed: {
+        static const uint8_t ts[] = { 0xf2, 0xf3, 0xf9, 0xfa, 0xfb, 0xfc, 0x00 };
+        uint8_t t = ts[rnd() % sizeof ts];
+        code[n++] = (uint8_t)rndi(0, 2); code[n++] = (rnd() % 4) ? (uint8_t)rndi(0, 5) : 0xdc;
+        code[n++] = t; code[n++] = (t == 0xf2 || t == 0xf3) ? (small ? (uint8_t)rndi(1, 4) : (uint8_t)rndi(0, 0xa1)) : (uint8_t)rndi(0, 6);
+        break;
+    }
+    }
+    code[n++] = 0xff;
+    wr32(C, gaddr(rv->pc), gc);
+    for (int i = 0; i < NG; i++) reg_add(gaddr(gl[i]), gs[i]);
+    for (int i = 0; i < 6; i++) reg_add(gaddr(ar[i]), as[i]);
+    reg_add(gaddr(cv->vars), 16);
+    emu_set_insn_budget(E, 5000000);
+    uint32_t r1 = call(fn[k], 0, NULL) & 0xff;
+    emu_set_insn_budget(E, 0);
+    if (E->failed) {
+        fprintf(stderr, "vm_exec case %d (instance %d): the original did not finish (%s); code", iter, k, emu_error(E));
+        for (int i = 0; i < n; i++) fprintf(stderr, " %02x", code[i]);
+        fprintf(stderr, "\n");
+        exit(1);
+    }
+    reg_save();
+    uint32_t r2 = vm_exec(k);
+    check("vm_exec", iter, "AL", &r1, &r2, 4);
+    reg_check("vm_exec", iter);
+    memcpy(vars, svars, 16);
+    for (int i = 0; i < NG; i++) memcpy(gp(gaddr(gl[i]), gs[i]), sg[i], gs[i]);
+    for (int i = 0; i < 6; i++) memcpy(gp(gaddr(ar[i]), as[i]), sa[i], as[i]);
+    for (int q = 0; q < 3; q++) wr32(C, gaddr(cv->tapes) + 4u * q, save_t[q]);
+}
+
+// a rule set run over a random segment, with the real rules (and, to reach the rule types the rule data
+// never uses, rules whose type is patched in the emulator's copy of .rdata); everything the rules and
+// their procedures can write is compared: .data, the tapes, the heap
+static int main_applied, main_runs;
+static void t_main(int iter) {
+    static const uint32_t fn[3] = { 0x6368c997, 0x636909b7, 0x63693ef8 };
+    static const uint32_t firsts[3] = { 0x636a07be, 0x636a32a6, 0x636a7c46 }, lasts[3] = { 0x636a07de, 0x636a32c6, 0x636a7cc6 },
+        offs[3] = { 0x636a1ee6, 0x636a523e, 0x636abee6 }, codes[3] = { 0x636a2517, 0x636a5e9f, 0x636af29f };
+    int k = iter % 3;
+    const RuleVM *vm = &rule_vm[k];
+    int mode, f, l;
+    do {
+        mode = rndi(0, 15);
+        f = *(int16_t *)gp(gaddr(firsts[k] + 2u * mode), 2);
+        l = *(int16_t *)gp(gaddr(lasts[k] + 2u * mode), 2);
+    } while (!(f >= 1 && l >= f && l < 400));
+    // the tapes as the engine lays them out (one block; 0x63693792 and its copies set this up), and the
+    // 1-based array the tape-select opcodes index: tapes[1..5] = tape 0..4, minus one
+    static const uint32_t toff[6] = { 0x585, 0xb05, 0x1085, 0x1605, 0x438e, 5 };
+    static const uint32_t tsel[3] = { 0x63739204, 0x637393dc, 0x637395bc };
+    uint32_t blk = galloc(0x5000);
+    uint8_t *b = gp(blk, 0x5000);
+    for (int i = 0; i < 0x5000; i++) b[i] = (uint8_t)((rnd() % 3) ? rndi(0x41, 0x5a) : rndi(0x0f, 0xae));
+    for (int i = 5; i < 0x585; i++) b[i] = (uint8_t)rndi(0, 2);
+    for (int q = 0; q < 6; q++) {
+        wr32(C, gaddr(vm->tape[q]), blk + toff[q]);
+        if (q < 5) wr32(C, gaddr(tsel[k]) + 4u * (q + 1), blk + toff[q] - 1);
+    }
+    int16_t top = 0x501; memcpy(gp(gaddr(vm->top), 2), &top, 2);
+    wr32(C, gaddr(run_vm[k].abort), 0);
+    int32_t sidx = rndi(20, 80);
+    uint32_t gpend = galloc(4);
+    int16_t pend = (int16_t)(sidx + rndi(1, 30));
+    memcpy(gp(gpend, 2), &pend, 2);
+    // patch one rule of the set to a rule type the data does not use (its group: itself and what follows)
+    uint8_t *tp = NULL, tsave = 0;
+    if (iter % 4 == 0) {
+        int i = rndi(f, l);
+        int16_t off = *(int16_t *)gp(gaddr(offs[k] + 2u * i), 2);
+        tp = gp(gaddr(codes[k]) + (uint32_t)off, 1);
+        tsave = *tp;
+        static const uint8_t ty[] = { 2, 6, 9, 10, 11, 12, 14, 15, 16 };
+        *tp = ty[rnd() % sizeof ty];
+    }
+    // the stack under the caller: the same garbage for both runs
+    uint32_t sp = C->s.r[ESP];
+    memset(gp(sp - 0x8000, 0x8000), 0x5a, 0x8000);
+    const uint32_t dbase = 0x6371c000, dsize = 0x1e0b0;
+    uint8_t *d0 = malloc(dsize); memcpy(d0, gp(gaddr(dbase), dsize), dsize);
+    HeapSnap h0; heap_snap(&h0);
+    uint32_t a[3] = { (uint32_t)mode, (uint32_t)sidx, gpend };
+    emu_set_insn_budget(E, 200000000);
+    uint32_t r1 = call(fn[k], 3, a) & 0xff;
+    emu_set_insn_budget(E, 0);
+    if (E->failed) { fprintf(stderr, "vm_main case %d (instance %d, mode %d): the original did not finish (%s)\n", iter, k, mode, emu_error(E)); exit(1); }
+    HeapSnap h1; heap_snap(&h1);
+    uint8_t *d1 = malloc(dsize); memcpy(d1, gp(gaddr(dbase), dsize), dsize);
+    heap_restore(&h0);
+    memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+    memset(gp(sp - 0x8000, 0x8000), 0x5a, 0x8000);
+    uint32_t r2 = vm_main(k, mode, sidx, gp(gpend, 2)) & 0xff;
+    if (emu_failed(E)) { fprintf(stderr, "vm_main case %d: guest fault in the C run (%s)\n", iter, emu_error(E)); exit(1); }
+    check("vm_main", iter, "AL", &r1, &r2, 4);
+    if (getenv("VDBG") && memcmp(d1, gp(gaddr(dbase), dsize), dsize))
+        for (uint32_t i = 0; i < dsize; i++) if (d1[i] != ((uint8_t *)gp(gaddr(dbase), dsize))[i]) fprintf(stderr, "  .data %08x: orig %02x C %02x\n", dbase + i, d1[i], ((uint8_t *)gp(gaddr(dbase), dsize))[i]);
+    check("vm_main", iter, ".data", d1, gp(gaddr(dbase), dsize), dsize);
+    heap_check("vm_main", iter, &h1);
+    main_runs++; main_applied += r1 != 0;
+    if (tp) *tp = tsave;
+    free(d0); free(d1); free(h0.mem); free(h1.mem);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -991,10 +1249,13 @@ int main(int argc, char **argv) {
         t_vm(it);
         t_cond(it);
         t_match(it);
+        t_apply(it);
+        t_exec(it);
+        if (it < 600) t_main(it);
         if (it < 500) t_viterbi(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
-    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d)\n", cases, fails, vm_skips, match_hits);
+    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs);
     return fails ? 1 : 0;
 }
