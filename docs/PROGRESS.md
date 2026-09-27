@@ -25,15 +25,16 @@ Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability
 |---|---|---|
 | static function list (excl. 73 import stubs; approximate) | ~1,000 | ~185,000 of .text 184,302 (boundaries approximate) |
 | reached by the corpus | 536 | 145,161 |
-| **decompiled and verified** | **295** (263 reached, 32 reached only by the unit tests) | **74,175** |
-| share of the reached set | 49.1% | 49.1% |
+| **decompiled and verified** | **299** (267 reached, 32 reached only by the unit tests) | **75,438** |
+| share of the reached set | 49.8% | 50.0% |
 | share of all guest instructions executed | | 98.5% |
 
-Session 4 added 125 hooked functions (43 KB): the rest of the rule machine (rule execution, rule match,
-the rule-set main loop, rule apply: 3 instances each), every rule procedure the three machines call
-(87 table entries: 60 wrappers that run another rule set, 27 with work of their own), and the
-lexicon: the ten word dictionaries and the Huffman-coded trie of the main lexicon (see "Done, session
-4" and "The front end, mapped").
+Session 4 added 129 hooked functions (44.5 KB): the rest of the rule machine (rule execution, rule
+match, the rule-set main loop, rule apply: 3 instances each), every rule procedure the three machines
+call (87 table entries: 60 wrappers that run another rule set, 27 with work of their own), the
+lexicon (the ten word dictionaries and the Huffman-coded trie of the main lexicon), the word module's
+duration increments, and the first piece of the portable build: `make port-lex-check` runs the main
+lexicon as C alone on 27,100 words, identical to the original (see "Done, session 4").
 
 Session 3 added 59 (12.7 KB): the thread plumbing of the unit stage and the synthesizer, most of the
 alternative-unit search, and the rule machine's tape routines, condition interpreter and runner.
@@ -191,6 +192,26 @@ the output) and `src/x87.h` the x87 conversions (fistp, _ftol, the |x| idiom).
 small edits) - that is how the three rule-machine instances were matched; instance A differs in
 reading one position as int16 and in its apply guard.
 
+## Done, session 4 (129 functions)
+
+| address(es) | name(s) | what | verified by |
+|---|---|---|---|
+| 0x6368d966, 0x63691990, 0x63694ed7 | vm_match | the rule pattern matcher: literals, classes, variables, tape switches, bounded repetitions, embedded conditions | golden, hookdiff, unit (random patterns over small alphabets) |
+| 0x6368f187, 0x636931b1, 0x636966f8 | vm_apply | a rule's output: a procedure (0xfe,n) or a replacement string, keeping per-character counts | golden, hookdiff, unit |
+| 0x6368e53d, 0x63692568, 0x63695aaf | vm_exec | one context opcode: tests, filler skips, alternatives and optional parts (choice points), repetitions | golden, hookdiff, unit (every opcode on random state) |
+| 0x6368c997, 0x636909b7, 0x63693ef8 | vm_main | a rule set over a segment: 16 scan strategies (forward / backward, anchored or not, all or first, single rules or groups); its frame lives on the guest stack (`vc_stack_push`) because procedures of the original get pointers into it | golden, hookdiff, unit (real rule sets on random segments; the rule types the data never uses, 9-12 and 15, by patching types in the emulator's .rdata) |
+| 60 addresses (fe_procs.c table) | vm_proc (PROC_MAIN) | the rule procedures that run another rule set | unit (.data, tapes and heap compared) |
+| 0x6368b28b, b2e0, b305, b383 (+ b468, b526), b6bc; 0x6369048f (+ 0x636905f9), 0x63690633, 0x63690215, 0x6369024b; 0x636939b0, 3984, 38b9, 38ef, 3925, 382c, 3a03, 397f | vm_proc (tape procedures) | prosody-tag numbers into the word object, quotes, dash numbering, pause placement, class marks, "x(y)" alternatives | golden, hookdiff, unit (tapes drawn from the symbols each one tests) |
+| 0x6369a9c8, 0x6369a87e + 7, 0x6369a47b | lex_pack, lex_field, lex_field18 | letter-code key packing, packed n-bit field arrays | unit |
+| 0x63698968, 0x63699322, 0x63698e44, 0x63697675, 0x63697e71 | lex_bsearch8w, lex_bsearch16, tapes_printable | the dictionaries' other searches | golden, hookdiff |
+| 0x6369a4ea, 0x6369773d, 0x636980bf, 0x63698a3e, 0x63698594, 0x63698f1a, 0x636993f8, 0x63697c17, 0x636972c7 | lex_lookup | nine dictionaries, one function, the variants as data (`lex_dicts`) | golden, hookdiff, unit (half the words unpacked from the dictionaries' own keys) |
+| 0x6369986b, 0x63699bd5, 0x6369a15f, 0x63699cd6, 0x63699d94, 0x63699e19, 0x63699e9e, 0x63699f23, 0x63699fae, 0x6369a0c9 | lex_main, lex_trie_* , lex_huff_* | the main lexicon: Huffman-coded trie walk, entry number, pronunciation with back-references | golden, hookdiff, unit (15,418 words of /usr/share/dict/words the lexicon has), port-lex-check |
+| 0x63696dd8, 0x63696f5f, 0x6369713a, 0x63697261 | word_durations, word_cluster, word_cluster_find, word_stop_weight | letter-cluster codes and per-position duration increments of the word object | golden, hookdiff, unit |
+
+Negative controls were run for each group (one changed comparison or constant per run); where a
+change was not detected it was confirmed to be unobservable (e.g. an equality the data never
+produces) or a generator was sharpened until it was.
+
 ## The front end, mapped (sessions 3 and 4)
 
 Session 3 inferred roles from call counts on probe texts; session 4 read the code, which corrects one
@@ -272,27 +293,30 @@ load them from the DLL, like the voice data.
 
 ## What is left, and the obstacles
 
-1. **The front end** (~290 functions, ~95 KB reached, ~27% of it by function count now started):
-   the three rule-machine executors are the big pieces - rule execution (3 x ~3,065 B), rule match
-   (3 x ~1,886 B), the module main loop (3 x ~3.4 KB), rule apply (811-860 B x 3) and the 104 small
-   callbacks; then the dictionary decoders, the letter-to-sound driver, normalisation glue and phrasing.
-   The three instances share code, so each routine is done once and hooked three times.
-2. **Unit stage leftovers**: the lattice phrase rewrite 0x63685d72 (2,210 B, 53 of 718 instructions
-   reached) and the tree query 0x6367233c (never reached). Both run through `harness/guest.c`.
-3. **Synthesizer leftovers**: its init 0x636819e6 (has a C++ exception frame) and the resamplers
-   (never reached).
-4. **Voice loading / COM** (ITTSEnum::Select subtree, ~20 KB) - to be replaced rather than reproduced.
+Reached and not yet decompiled: 269 functions, ~72.6 KB. By area:
+
+1. **Front end outside the rule machines and the lexicon (~40 KB):** the front-end thread and text
+   input (0x63684233, 0x63689357, 0x63689726, 0x63689fee ...: ~9 KB), machine A's per-phrase driver
+   (0x6368c49b with 0x6368bab2, 0x6368f732, 0x6368fed5, 0x6368c6f1 ...: ~8 KB of duration / accent
+   heuristics over the word object), the phrase prosody at 0x636827b0..0x6368337f and 0x636837a4 /
+   0x6368043f (~10 KB), and 0x6369aaa4 (5.4 KB) with 0x6369c9e6 (1.6 KB).
+2. **Voice loading / COM** (~29 KB reached in 0x63671000..0x63680000): to be replaced rather than
+   reproduced in the portable build.
+3. **Unit stage leftovers**: the lattice phrase rewrite 0x63685d72 (2,210 B, barely reached), the tree
+   query 0x6367233c (never reached).
+4. **Synthesizer leftovers**: its init 0x636819e6 (C++ exception frame) and the resamplers.
 5. **~460 functions the corpus never reaches** (~40 KB).
-6. **Data extraction** for the portable build (.rdata 515 KB, .data 120 KB), and a portable driver.
-   `make portable-check` lists every original function the portable build still calls through
-   `harness/guest.c` (currently 12 addresses: the three rule-machine stubs x3, plus the three above).
+6. **The portable build**: `port/` loads the DLL's data at run time and runs the main lexicon;
+   a driver for the whole pipeline needs the rest of the front end and a single-threaded replacement
+   for the thread plumbing.
 
 **Pointers.** The emulator is 32-bit guest on a 64-bit host, so C structs holding pointers cannot be
 shared between guest and native code the way OpenTV's 32-bit hook build shares them. Leaf functions
 take guest pointers translated at the adapter. Objects with pointer fields use `GPTR(T)` (src/gptr.h):
 a 32-bit guest address in the hook build and a real pointer in the portable build, so the same source
-compiles both ways (`clang -fsyntax-only src/*.c` without DECOMP_HOOK passes; there is no portable
-driver yet, so nothing links it).
+compiles both ways (`clang -fsyntax-only src/*.c` without DECOMP_HOOK passes). Globals that hold
+pointers are accessed with `DLLPTR(T, addr)`: a 32-bit slot in the hook build, a host-pointer slot in
+the portable build (port/dllimage.c, filled from the DLL's relocations).
 
 **Threads.** The engine runs three worker threads with events and critical sections. The portable
 library will want a single-threaded pipeline (as OpenTV's did); the hook build keeps the original
@@ -301,11 +325,10 @@ the golden hashes.
 
 ## Estimate
 
-Session 3 added 59 functions / 12.7 KB, including all the thread plumbing (which needed blocking
-coroutine hooks) and the core of the rule machine. Of the reached code, 20.6% of bytes are done, and
-94.6% of executed instructions now run decompiled C. Remaining reached code is ~114 KB, ~85 KB of it
-front end. The front end is now mapped: the letter-to-sound and lexicon code is about 16 KB plus
-small callbacks, not the unknown it was. Revised estimate: **4-6 more weeks** of focused sessions to a
-portable build that reproduces the golden corpus; the risk is concentrated in the three large
-rule-machine routines (execution, match, main loop), which are tangled but shared by all three
-instances.
+Session 4 added 129 functions / 44.5 KB - three times session 3 - because the rule machine's
+instances share code, its procedures are mostly one template, and the dictionaries are one function
+over data. Half of the reached code (50.0% of bytes) is now C, and 98.5% of executed instructions. The
+risk named last time (the large rule-machine routines) is gone. What remains of the front end is
+hand-written heuristics over the word object (~40 KB, no templates to share), plus voice loading to
+replace. Revised estimate: **3-5 more weeks** of focused sessions to a portable build that reproduces
+the golden corpus.

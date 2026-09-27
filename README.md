@@ -26,6 +26,7 @@ make golden          # 46 renders over all 19 modes against tools/golden_hashes.
 make unit            # each decompiled function vs the original on random inputs (heap too)
 make hookdiff        # 171 renders (19 modes x 9 texts x 2 warm utterances), hooks vs the original
 make portable-check  # src/ type-checks as the portable build (no emulator, real pointers)
+make port-lex-check  # the portable build's first piece (port/): the main lexicon as C alone, vs the original
 SAPI4_HOOKS=none|all|a,b|-a,-b  build/sapi4_speak ...     # choose hooks (bisecting)
 SAPI4_HOOK_STATS=1   build/sapi4_speak ...                # how often each hook ran
 ```
@@ -48,5 +49,9 @@ Hooks: `HOOK(addr, name, argbytes)` in harness/hooklist.h runs the C directly; `
 coroutine so it can Sleep or block mid-function like the original. Decompiled C that needs a function
 not decompiled yet calls it through harness/guest.c (`make portable-check` lists those). The C runtime
 semantics shared by the emulator and the decompiled code live in src/vcrt.c.
+
+`port/` is the portable build as it grows: `dllimage.c` loads the DLL's sections from the user's copy at
+run time (the tables stay Microsoft's, read where they are; relocated dwords become host pointers), so
+`DLLVAR` / `DLLPTR` in src/ work without the emulator.
 
 Addresses everywhere are the DLL's own (preferred base 0x63670000).

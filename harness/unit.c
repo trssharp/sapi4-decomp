@@ -1642,7 +1642,7 @@ int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
     setenv("SAPI4_HOOKS", "none", 1);
-    E = emu_create(256u << 20);
+    E = emu_create(1024u << 20);   // (the random tests allocate as they go)
     C = emu_cpu(E);
     emu_map_dir(E, "C:\\SPEECH", argv[1]);
     char host[1200];
