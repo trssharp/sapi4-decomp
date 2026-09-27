@@ -23,7 +23,14 @@ renders against the original), `make userlex-check` (user lexicon files), `make 
 lists), `make port-lex-check` (the main lexicon); `make port-render-full-check` runs the fully baked
 binary (DLL data and voice files compiled in) with no voice directory at all.
 
-## Where this stands (end of session 6, 2026-09-27)
+The library (lib/sapi4tts.h) is checked through its API: `make api-check` (the 46 golden renders in one
+process with a fresh engine each, again on four threads; the 84 tagged renders; the 22 user-lexicon
+renders; a warm engine's second utterance; every mode's pitch and speed limits; stop, reset, clamping
+and the engine limit), `make api-baked-check` (the golden set with the DLL's data and the voices
+compiled into the library), `make ios-check` (the library compiled for arm64 iOS, a test program
+linked against it).
+
+## Where this stands (end of session 7, 2026-09-27)
 
 Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`):
 
@@ -34,6 +41,14 @@ Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability
 | **decompiled and verified** | **522** (445 reached, 77 reached only by the unit tests or the new checks) | **145,966** |
 | share of the reached set | 83.0% | 92.8% |
 | share of all guest instructions executed | | 100.0% (rounded) |
+
+**Session 7: the library.** `lib/sapi4tts.h` is the embedding API: `s4_init` (the DLL's data from a
+file, or compiled in), `s4_list_modes`, `s4_open` (a mode by name, voices from a directory or compiled
+in), `s4_speak` (PCM to a callback, streamed unit by unit), pitch and speed get/set with SAPI's
+clamping, `s4_stop` (any thread, never blocks), `s4_reset`, `s4_close`. `build/libsapi4tts.a` for
+arm64 macOS, `build/ios/libsapi4tts.a` for arm64 iOS, `build/libsapi4tts_baked.a` with everything
+compiled in. No functions were added to the decompilation this session; the engine sequence the
+library runs is the one the golden checks have verified since session 5.
 
 **Session 6: the portable renderer is feature-complete for the SAPI text path.** Speed and pitch are
 set as a SAPI client sets them, and all 46 golden renders come out identical with no emulator. Tagged
@@ -282,6 +297,27 @@ limits by setting the extremes, restore, set the requested values clamped); tagg
 end's own rand state; the module path for the user lexicon. port/mkvoices.c generates the voice-file
 table for the fully baked build (`build/port_render_full`).
 
+## Done, session 7: the library
+
+* **Instances.** Each engine owns its queues, front end, unit stage, synthesizer, pitch and speed, and
+  the four MSVCRT rand states of the original's threads (set-up, front end, unit stage, synthesizer;
+  each starts at 1, which is what makes an engine's output independent of what came before it).
+* **What is shared**, as it was between engines of one process in the original: the voice table
+  (voice data loaded once per voice), the lexicons (the user lexicon is read by the first engine), the
+  rule machines' tapes, the phone tables; plus this port's own tables (events, directory listings, the
+  compiled-in file table). All engine work therefore runs under one process-wide lock: engines on
+  different threads take turns, each unaffected by the other (the golden set on four threads is
+  identical). s4_stop is lock-free.
+* **Streaming.** The front end turns a text into one or a few phrase items; the library hands those to
+  the unit stage one at a time, and the unit stage's output to the synthesizer one unit at a time,
+  delivering PCM after each: a stop takes effect within one unit (tens of milliseconds of audio).
+* **Teardown and limits.** The original's destructors are not decompiled: s4_close frees the queues,
+  their items and the events; inner buffers stay (tens of kilobytes per engine), and the engine's
+  128 word objects bound a process to 127 engines over its lifetime (s4_open then fails cleanly).
+* **Unreached code.** The functions with no C (the older senone-tree format, the text mode of
+  0x636744c4, the sample-rate converters) abort if called; the library never asks for another output
+  rate, and the shipped voices use the newer tree format.
+
 ## The front end, mapped (sessions 3 to 5)
 
 Session 3 inferred roles from call counts on probe texts; session 4 read the code, which corrects one
@@ -422,18 +458,15 @@ load them from the DLL, like the voice data.
 
 ## What is left, and the obstacles
 
-Reached and not yet decompiled: 91 functions, 10.4 KB:
+Reached and not yet decompiled: 91 functions, 10.4 KB - the SAPI/COM shell (which the library
+replaces), the C runtime helpers, nothing on the text-to-PCM path. Never reached by the corpus: ~440
+functions, ~38 KB (the sample-rate converters, the older senone-tree format, the lexicon COM methods,
+error paths).
 
-1. **The SAPI / COM layer (~10 KB):** the engine object's set-up 0x6367a9ba, the COM interfaces and
-   their small methods, the window procedure and the audio hand-off. The portable renderer follows
-   what they do call for call (port/render.c); a library would expose its own API instead of COM.
-2. **C runtime helpers** (17 functions, 0.8 KB), which C does not need.
-3. **Never reached by the corpus** (~440 functions, ~38 KB): the sample-rate converters (22050/11025
-   to 8000, 8000 to 11025, 22050 to 16000: only when an audio destination refuses the voice's rate),
-   the older senone-tree format, the text mode 0x636744c4, the lexicon COM methods (0x636844c2 ...),
-   error paths.
-4. **A library API.** port/render.c is a command-line driver; an app wants init / speak(text, flags,
-   callback) / set pitch-speed / reset, and a way to stop mid-utterance (the abort events exist).
+For an app: an Objective-C/Swift wrapper over lib/sapi4tts.h (AVAudioEngine playback, voice list),
+an xcframework (macOS + iOS device + simulator: `make ios-check` builds the device slice only), and a
+decision on shipping the voices baked (one 9 MB object) or as files in the bundle. Memory: engines
+are meant to be long-lived (see the limits above); an app should keep one per voice.
 
 **Pointers.** The emulator is 32-bit guest on a 64-bit host, so C structs holding pointers cannot be
 shared between guest and native code the way OpenTV's 32-bit hook build shares them. Leaf functions
@@ -449,9 +482,7 @@ one thread (see the pitfalls), verified against the golden hashes.
 
 ## Estimate
 
-Session 6 finished the portable text path: every golden render (speed and pitch included), tagged
-text and the user lexicon match the original with no emulator, and a single fully baked binary works.
-What remains is packaging (a small library API over port/render.c's sequence, stop/reset, a build for
-the target platforms) and, only if a distribution needs them, the unreached converters. Revised
-estimate: **one more session** for the library API and its checks; the unreached remainder is
-optional.
+The decompilation's goal - the engine's text-to-PCM path in portable C, bit-exact against the original
+- is met, with an embedding library. Optional remainder: the unreached converters and tree format (a
+day each if ever needed), an xcframework and a Swift wrapper (a session), the original's destructors
+(to lift the engine limit; a session).
