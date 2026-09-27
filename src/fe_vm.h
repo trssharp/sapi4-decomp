@@ -24,3 +24,7 @@ int32_t vm_push_until(const RuleVM *vm, int32_t s);
 // @0x6368e4cf: skip the bytecode block opened by `tok` (nesting on tok,1 and 0xf5 pairs) up to tok,end;
 // 1 in AL if found, 0 at the tok,0 terminator. Returns the full EAX of the original.
 uint32_t vm_skip_block(const RuleVM *vm, uint8_t tok, uint8_t end);
+// @0x6368f567: move tape positions a-1..b by d (d > 0: towards the end, clearing tape 5 behind; d <= 0:
+// towards the start, adding tape 5 into the destination). Returns b + d. (32-bit arguments of which
+// the original uses the low halves in places.)
+int32_t vm_move(const RuleVM *vm, int32_t a, int32_t b, int32_t d);

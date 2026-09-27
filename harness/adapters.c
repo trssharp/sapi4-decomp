@@ -347,3 +347,6 @@ void hk_vm_push_until_2(Emu *e, X86 *c) { E_RET(vm_push_until(&rule_vm[2], AI(0)
 void hk_vm_skip_block_0(Emu *e, X86 *c) { E_RET(vm_skip_block(&rule_vm[0], (uint8_t)A(0), (uint8_t)A(1))); }
 void hk_vm_skip_block_1(Emu *e, X86 *c) { E_RET(vm_skip_block(&rule_vm[1], (uint8_t)A(0), (uint8_t)A(1))); }
 void hk_vm_skip_block_2(Emu *e, X86 *c) { E_RET(vm_skip_block(&rule_vm[2], (uint8_t)A(0), (uint8_t)A(1))); }
+void hk_vm_move_0(Emu *e, X86 *c) { E_RET(vm_move(&rule_vm[0], AI(0), AI(1), AI(2))); }
+void hk_vm_move_1(Emu *e, X86 *c) { E_RET(vm_move(&rule_vm[1], AI(0), AI(1), AI(2))); }
+void hk_vm_move_2(Emu *e, X86 *c) { E_RET(vm_move(&rule_vm[2], AI(0), AI(1), AI(2))); }

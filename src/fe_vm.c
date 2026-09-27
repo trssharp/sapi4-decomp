@@ -67,3 +67,34 @@ uint32_t vm_skip_block(const RuleVM *vm, uint8_t tok, uint8_t end) {
         c = p[1];
     }
 }
+
+int32_t vm_move(const RuleVM *vm, int32_t a, int32_t b, int32_t d) {
+    if ((int16_t)d > 0) {
+        int32_t stop = (int16_t)a - 1;
+        int32_t i = (int16_t)b;
+        if (i >= stop) {
+            int32_t dst = d + b + 1, cnt = b;
+            do {
+                int16_t k0 = (int16_t)dst;
+                for (int k = 0; k < 6; k++) TAPE(vm, k)[k0 - 1] = TAPE(vm, k)[i];
+                TAPE(vm, 5)[i] = 0;
+                dst--;
+                cnt--;
+                i = (int16_t)cnt;
+            } while (i >= stop);
+        }
+    } else {
+        int32_t start = a - 1;
+        if (!((int16_t)start > (int16_t)b)) {
+            int32_t n = (int16_t)b - (int16_t)start + 1;
+            int32_t i = (int16_t)start, dst = start + d + 1;
+            for (; n; n--, dst++, i++) {
+                int16_t k0 = (int16_t)dst;
+                for (int k = 0; k < 5; k++) TAPE(vm, k)[k0 - 1] = TAPE(vm, k)[i];
+                TAPE(vm, 5)[k0 - 1] = (char)(TAPE(vm, 5)[k0 - 1] + TAPE(vm, 5)[i]);
+                TAPE(vm, 5)[i] = 0;
+            }
+        }
+    }
+    return b + d;
+}

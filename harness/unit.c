@@ -786,6 +786,11 @@ static void t_vm(int iter) {
     int16_t pa = (int16_t)rndi(3, 60), pb = (int16_t)(pa + rndi(-2, 30));
     uint32_t b[2] = { (uint32_t)(int32_t)pa, (uint32_t)(int32_t)pb };
     REGS(); call(fp[k], 2, b); reg_save(); vm_pop_range(vm, pa, pb); reg_check("vm_pop_range", iter);
+    static const uint32_t fm[3] = { 0x6368f567, 0x636935c2, 0x63696b09 };
+    uint32_t ma[3] = { (uint32_t)rndi(3, 80), 0, (uint32_t)(int32_t)rndi(-20, 20) };
+    ma[1] = ma[0] + (uint32_t)rndi(-3, 50);
+    REGS(); uint32_t m1 = call(fm[k], 3, ma); reg_save(); uint32_t m2 = (uint32_t)vm_move(vm, (int32_t)ma[0], (int32_t)ma[1], (int32_t)ma[2]);
+    reg_check("vm_move", iter); check("vm_move", iter, "EAX", &m1, &m2, 4);
     // push_until needs a 0x0e below the top
     ((uint8_t *)gp(gt[0], 300))[top - 1 + rndi(0, 20)] = 0x0e;
     uint32_t ps = (uint32_t)rndi(0, 30);
