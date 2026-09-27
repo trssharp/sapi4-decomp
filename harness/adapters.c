@@ -27,6 +27,7 @@ static FILE *trace_file(void);
 #include "fe_rules.h"
 #include "queue.h"
 #include "fe_vm.h"
+#include "voices.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -788,3 +789,32 @@ void hk_voc_engine_init(Emu *e, X86 *c) {
                                     GPH(uint8_t, A(4), 4), AI(5), A(6), A(7), AI(8), A(9), A(10)));
 }
 void hk_voc_init(Emu *e, X86 *c) { voc_init(THIS(VocEngine), AI(0)); }
+
+#define ML(i) GPH(ModeList, A(i), sizeof(ModeList))
+void hk_list_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(list_ctor(THIS(ModeList)))); }
+void hk_list_count(Emu *e, X86 *c) { E_RET(list_count(THIS(ModeList))); }
+void hk_list_grow(Emu *e, X86 *c) { E_RET((uint32_t)list_grow(THIS(ModeList), A(0))); }
+void hk_list_add(Emu *e, X86 *c) { E_RET((uint32_t)list_add(THIS(ModeList), A(0) ? GPH(uint8_t, A(0), A(1) ? A(1) : 1) : NULL, A(1))); }
+void hk_list_item(Emu *e, X86 *c) { E_RET(list_item(THIS(ModeList), A(0))); }
+void hk_wstr_copy(Emu *e, X86 *c) { wstr_copy(GPH(uint16_t, A(0), 2), GPH(const uint16_t, A(1), 2)); }
+void hk_voice_read_header(Emu *e, X86 *c) { E_RET((uint32_t)voice_read_header(GPH(const char, A(0), 1), GPH(VoiceHdr, A(1), 0x8f8))); }
+void hk_mode_info(Emu *e, X86 *c) { mode_info(GPH(const VoiceHdr, A(0), 0x8f8), GPH(TtsModeInfo, A(1), 0xaf0)); }
+void hk_mode_info_cfg(Emu *e, X86 *c) {
+    mode_info_cfg(GPH(VoiceCfg, A(0), 0xb18), GPH(const VoiceHdr, A(1), 0x8f8), GPH(TtsModeInfo, A(2), 0xaf0));
+}
+void hk_cfg_check_40(Emu *e, X86 *c) { E_RET((uint32_t)cfg_check_40(A(0), A(1), NULL)); }
+void hk_cfg_check_20(Emu *e, X86 *c) { E_RET((uint32_t)cfg_check_20(A(0), A(1), NULL)); }
+void hk_cfg_check_10(Emu *e, X86 *c) { E_RET((uint32_t)cfg_check_10(A(0), A(1), NULL)); }
+void hk_cfg_read(Emu *e, X86 *c) {
+    E_RET((uint32_t)cfg_read((int16_t)A(0), (int16_t)A(1), GPH(const char, A(2), 1), GPH(VoiceCfg, A(3), 0xb18), ML(4),
+                             GPH(uint32_t, A(5), 4)));
+}
+void hk_mode_find(Emu *e, X86 *c) {
+    E_RET((uint32_t)mode_find(ML(0), GPH(const uint8_t, c->s.r[ESP] + 8, 16), GPH(uint32_t, A(5), 4)));
+}
+void hk_voices_enum(Emu *e, X86 *c) { E_RET((uint32_t)voices_enum(GPH(const char, A(0), 1), ML(1), ML(2), ML(3))); }
+void hk_cfg_load(Emu *e, X86 *c) { E_RET(host_to_guest(cfg_load(GPH(const char, A(0), 1), AI(1)))); }
+void hk_mode_table_add(Emu *e, X86 *c) {
+    E_RET((uint32_t)mode_table_add(GPH(const VoiceHdr, A(0), 0x8f8), ML(1), ML(2), GPH(int32_t, A(3), 4), GPH(int32_t, A(4), 4),
+                                   GPH(int32_t, A(5), 4)));
+}

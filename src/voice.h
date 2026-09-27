@@ -144,9 +144,10 @@ void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n);
 int32_t voc_resample(uint32_t obj, uint32_t method, float *in, GPTR(float) *out, int32_t n);
 // the engine's table of voice modes (per mode: the mode descriptions; +0x90c of each is its name)
 typedef struct ModeTable {
-    uint8_t _00[0x14];
-    int32_t count;                      // 0x14
-    GPTR(GPTR(const uint8_t)) modes;    // 0x18
+    uint8_t mode_id[16];                // 0x00 the base voice's mode id (voices.c)
+    int32_t refs;                       // 0x10 engines using it
+    int32_t count;                      // 0x14 characters (CFG streams) of the voice
+    GPTR(GPTR(const uint8_t)) modes;    // 0x18 [count + 1]: 1.. the characters' CFG streams (0 unused)
     int32_t loaded;                     // 0x1c the voice's Inventory has been loaded (shared by engines)
     GPTR(VocVoice) inv;                 // 0x20 it
 } ModeTable;

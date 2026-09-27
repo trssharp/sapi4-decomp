@@ -59,6 +59,16 @@ int32_t vc_stm_read(void *stm, void *buf, uint32_t n, uint32_t *got);
 int32_t vc_stm_size(void *stm, uint32_t *size);
 void *vc_stg_open_file(const char *path);
 void *vc_stg_open_mem(const void *data, size_t len);
+// OLE32 StgOpenStorage(path, NULL, mode, NULL, 0, &stg): a compound file's root storage by its wide path
+// (a portable build maps '\\' to '/'); IStream::Seek (a 32-bit move; *pos, when given, the new position)
+int32_t vc_StgOpenStorage(const uint16_t *path, uint32_t mode, void **stg);
+int32_t vc_stm_seek(void *stm, int32_t move, uint32_t origin, uint32_t *pos);
+// KERNEL32 FindFirstFileA / FindNextFileA / FindClose; data: a WIN32_FIND_DATAA (0x140 bytes, the name at
+// 0x2c). A portable build lists the directory with the names sorted case-insensitively, as the emulator
+// (and NTFS) return them.
+uint32_t vc_FindFirstFileA(const char *pattern, void *data);
+int32_t vc_FindNextFileA(uint32_t h, void *data);
+int32_t vc_FindClose(uint32_t h);
 // OLE32 CoInitialize(NULL) / CoUninitialize (nothing to do in a portable build)
 int32_t vc_CoInitialize(void);
 void vc_CoUninitialize(void);

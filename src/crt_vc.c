@@ -96,6 +96,8 @@ void vc_DebugBreak(void) {}
 // storage objects of the portable build: a storage (a compound file's root) or a stream (its bytes)
 #include "cfb.h"
 #include <string.h>
+#include <stdio.h>
+#include <ctype.h>
 typedef struct VcObj { int kind; int refs; Cfb *f; uint32_t dir; uint8_t *data; size_t len, pos; } VcObj;
 static void *vc_obj(int kind, Cfb *f, uint32_t dir) {
     VcObj *o = calloc(1, sizeof *o);
@@ -141,6 +143,82 @@ int32_t vc_stm_read(void *stm, void *buf, uint32_t n, uint32_t *got) {
 int32_t vc_stm_size(void *stm, uint32_t *size) {
     *size = (uint32_t)((VcObj *)stm)->len;
     return 0;
+}
+int32_t vc_stm_seek(void *stm, int32_t move, uint32_t origin, uint32_t *pos) {
+    VcObj *o = stm;
+    int64_t base = origin == 0 ? 0 : origin == 1 ? (int64_t)o->pos : (int64_t)o->len;
+    int64_t np = base + move;
+    if (np < 0) return (int32_t)0x80030019u;       // STG_E_INVALIDFUNCTION
+    o->pos = (size_t)np;
+    if (pos) *pos = (uint32_t)np;
+    return 0;
+}
+int32_t vc_StgOpenStorage(const uint16_t *path, uint32_t mode, void **stg) {
+    (void)mode;
+    char p[1024];
+    size_t k = 0;
+    for (; path[k] && k < sizeof p - 1; k++) p[k] = path[k] == '\\' ? '/' : (char)path[k];
+    p[k] = 0;
+    *stg = vc_stg_open_file(p);
+    return *stg ? 0 : (int32_t)0x80030002u;
+}
+#include <dirent.h>
+#include <strings.h>
+typedef struct VcFind { char **names; int count, pos; } VcFind;
+static VcFind vc_finds[8];
+static int wild(const char *p, const char *s) {
+    if (!*p) return !*s;
+    if (*p == '*') return wild(p + 1, s) || (*s && wild(p, s + 1));
+    if (!*s) return 0;
+    if (*p != '?' && tolower((unsigned char)*p) != tolower((unsigned char)*s)) return 0;
+    return wild(p + 1, s + 1);
+}
+static void find_fill(void *data, const char *name) {
+    memset(data, 0, 0x140);
+    *(uint32_t *)data = 0x20;       // FILE_ATTRIBUTE_ARCHIVE
+    snprintf((char *)data + 0x2c, 260, "%s", name);
+}
+uint32_t vc_FindFirstFileA(const char *pattern, void *data) {
+    char dir[1024], pat[260];
+    const char *bs = strrchr(pattern, '\\');
+    if (bs) { snprintf(dir, sizeof dir, "%.*s", (int)(bs - pattern), pattern); snprintf(pat, sizeof pat, "%s", bs + 1); }
+    else { snprintf(dir, sizeof dir, "."); snprintf(pat, sizeof pat, "%s", pattern); }
+    for (char *q = dir; *q; q++) if (*q == '\\') *q = '/';
+    int slot = 0;
+    while (slot < 8 && vc_finds[slot].names) slot++;
+    DIR *d = opendir(dir);
+    if (slot == 8 || !d) { if (d) closedir(d); return 0xffffffffu; }
+    VcFind *f = &vc_finds[slot];
+    struct dirent *de;
+    while ((de = readdir(d))) {
+        if (de->d_name[0] == '.' || !wild(pat, de->d_name)) continue;
+        f->names = realloc(f->names, sizeof(char *) * (size_t)(f->count + 1));
+        f->names[f->count++] = strdup(de->d_name);
+    }
+    closedir(d);
+    for (int i = 1; i < f->count; i++)
+        for (int j = i; j > 0 && strcasecmp(f->names[j - 1], f->names[j]) > 0; j--) {
+            char *t = f->names[j]; f->names[j] = f->names[j - 1]; f->names[j - 1] = t;
+        }
+    if (!f->count) { free(f->names); f->names = NULL; return 0xffffffffu; }
+    find_fill(data, f->names[0]);
+    f->pos = 1;
+    return 0x100u + (uint32_t)slot;
+}
+int32_t vc_FindNextFileA(uint32_t h, void *data) {
+    if (h < 0x100u || h >= 0x108u || !vc_finds[h - 0x100u].names) return 0;
+    VcFind *f = &vc_finds[h - 0x100u];
+    if (f->pos >= f->count) return 0;
+    find_fill(data, f->names[f->pos++]);
+    return 1;
+}
+int32_t vc_FindClose(uint32_t h) {
+    if (h < 0x100u || h >= 0x108u || !vc_finds[h - 0x100u].names) return 0;
+    VcFind *f = &vc_finds[h - 0x100u];
+    for (int i = 0; i < f->count; i++) free(f->names[i]);
+    free(f->names);
+    memset(f, 0, sizeof *f);
+    return 1;
 }
 uint32_t vc_com_release(void *obj) {
     VcObj *o = obj;

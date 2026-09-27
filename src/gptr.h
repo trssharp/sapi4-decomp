@@ -8,6 +8,8 @@
 extern _Thread_local uint8_t *decomp_guest_mem;
 #define GPTR(T) uint32_t
 #define GP(T, v) ((T *)(void *)(decomp_guest_mem + (v)))
+// the same, NULL for a null field
+#define GPN(T, v) ((v) ? GP(T, v) : (T *)0)
 static inline uint32_t decomp_g(const void *p) { return p ? (uint32_t)((const uint8_t *)p - decomp_guest_mem) : 0u; }
 #define GPSET(field, p) ((field) = decomp_g(p))   // (p evaluated once)
 // a global of the original DLL, by its preferred-base address (hook build: the live copy in the image)
@@ -25,6 +27,7 @@ extern uint32_t decomp_load_delta;
 #else
 #define GPTR(T) T *
 #define GP(T, v) ((T *)(v))
+#define GPN(T, v) ((T *)(v))
 #define GPSET(field, p) ((field) = (p))
 // portable build: the DLL's sections, loaded from the user's copy of the DLL at run time (port/dllimage.c);
 // an address is the original's preferred-base address. Pointer-holding globals live in a separate

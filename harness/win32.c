@@ -81,10 +81,16 @@ void vc_InitializeCriticalSection(void *cs) { uint32_t a[1] = { g(cs) }; api(0x6
 int32_t vc_stg_open_stream(void *stg, const uint16_t *name, void **stm) {
     X86 *c = emu_cpu(decomp_emu);
     uint32_t sp = c->s.r[ESP];
-    c->s.r[ESP] = (sp - 16u) & ~15u;
+    // (a name in a C local is copied onto the guest stack)
+    int host = (const uint8_t *)name < decomp_guest_mem || (const uint8_t *)name >= decomp_guest_mem + decomp_emu->mem_size;
+    uint32_t nb = 0;
+    if (host) while (name[nb / 2]) nb += 2;
+    c->s.r[ESP] = (sp - 16u - (host ? nb + 2 : 0)) & ~15u;
     uint32_t slot = c->s.r[ESP];
     *(uint32_t *)(void *)(decomp_guest_mem + slot) = 0;
-    uint32_t a[5] = { g(name), 0, 0x10, 0, slot };
+    uint32_t gname = host ? slot + 16 : g(name);
+    if (host) memcpy(decomp_guest_mem + gname, name, nb + 2);
+    uint32_t a[5] = { gname, 0, 0x10, 0, slot };
     int32_t r = vc_com_call(stg, 4, 5, a);
     uint32_t o = *(uint32_t *)(void *)(decomp_guest_mem + slot);
     c->s.r[ESP] = sp;
@@ -116,5 +122,57 @@ int32_t vc_stm_size(void *stm, uint32_t *size) {
     c->s.r[ESP] = sp;
     return r;
 }
+int32_t vc_stm_seek(void *stm, int32_t move, uint32_t origin, uint32_t *pos) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - 16u) & ~15u;
+    uint32_t slot = c->s.r[ESP];
+    uint32_t a[4] = { (uint32_t)move, move < 0 ? 0xffffffffu : 0, origin, pos ? slot : 0 };
+    int32_t r = vc_com_call(stm, 5, 4, a);
+    if (pos) *pos = *(uint32_t *)(void *)(decomp_guest_mem + slot);
+    c->s.r[ESP] = sp;
+    return r;
+}
+int32_t vc_StgOpenStorage(const uint16_t *path, uint32_t mode, void **stg) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - 16u) & ~15u;
+    uint32_t slot = c->s.r[ESP];
+    *(uint32_t *)(void *)(decomp_guest_mem + slot) = 0;
+    uint32_t a[6] = { g(path), 0, mode, 0, 0, slot };
+    int32_t r = (int32_t)api(0x6369e228, 6, a);
+    uint32_t o = *(uint32_t *)(void *)(decomp_guest_mem + slot);
+    c->s.r[ESP] = sp;
+    *stg = o ? decomp_guest_mem + o : NULL;
+    return r;
+}
+// (the pattern and the find data may be C locals: they go through the guest stack)
+uint32_t vc_FindFirstFileA(const char *pattern, void *data) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    size_t n = strlen(pattern) + 1;
+    c->s.r[ESP] = (sp - 0x140u - (uint32_t)n - 16u) & ~15u;
+    uint32_t gd = c->s.r[ESP], gpat = gd + 0x140u;
+    memcpy(decomp_guest_mem + gd, data, 0x140);
+    memcpy(decomp_guest_mem + gpat, pattern, n);
+    uint32_t a[2] = { gpat, gd };
+    uint32_t r = api(0x6369e068, 2, a);
+    memcpy(data, decomp_guest_mem + gd, 0x140);
+    c->s.r[ESP] = sp;
+    return r;
+}
+int32_t vc_FindNextFileA(uint32_t h, void *data) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - 0x150u) & ~15u;
+    uint32_t gd = c->s.r[ESP];
+    memcpy(decomp_guest_mem + gd, data, 0x140);
+    uint32_t a[2] = { h, gd };
+    int32_t r = (int32_t)api(0x6369e064, 2, a);
+    memcpy(data, decomp_guest_mem + gd, 0x140);
+    c->s.r[ESP] = sp;
+    return r;
+}
+int32_t vc_FindClose(uint32_t h) { return (int32_t)api(0x6369e060, 1, &h); }
 void *vc_stg_open_file(const char *path) { (void)path; return NULL; }
 void *vc_stg_open_mem(const void *data, size_t len) { (void)data; (void)len; return NULL; }
