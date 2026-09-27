@@ -66,6 +66,11 @@ typedef struct RunVM {
     uint32_t cpos0;         // int16[]: saved pos0
     uint32_t ckind;         // int16[]: 0xf5 retry once, 0xf6 next alternative block, 0xf7 bounded retry
     uint32_t cur;           // the current tape global (as in CondVM)
+    uint32_t abort;         // int32: set when the stack overflows (A) / checked before trying (B, C)
+    uint32_t pos2;          // int16: the rule's right context start (match end - rule offset)
+    uint32_t bound;         // int16: a variable was bound
+    uint32_t vars;          // the variable bytes, cleared after a rule was tried if any got bound
+    uint32_t nvars;         // how many bytes that clear covers (8, 7, 30)
 } RunVM;
 extern const RunVM run_vm[3];
 // @0x6368e53d and copies (not decompiled yet): execute one rule; AL = success
@@ -73,3 +78,22 @@ uint8_t vm_exec(int inst);
 // @0x6368e30f and copies: run the rule list at pc+1 up to 0xff, backtracking through the choice
 // points on failure; AL = 1 if it ran through
 uint8_t vm_run(int inst);
+
+// a rule header (the fields vm_try reads)
+typedef struct RuleHdr {
+    int16_t _0;
+    int16_t left;           // 0x02 offset of the rule's focus from the match start
+    int16_t len;            // 0x04 input length the rule needs
+    uint8_t _6[0x293 - 6];
+    uint8_t applied;        // 0x293
+    GPTR(char) tape;        // 0x294 the current tape after trying it
+} RuleHdr;
+// @0x6368d966 and copies (not decompiled yet): match the rule's input at position `at`; the match end
+// (0: no match). `len` is passed in EAX's low half by the caller.
+int16_t vm_match(int inst, int32_t at, uint32_t len);
+// @0x6368f187 and copies (not decompiled yet): apply the rule's output; AL = success
+uint8_t vm_apply(int inst, int32_t a0, RuleHdr *r);
+// @0x6368d896 / 0x636918d6 / 0x63694e1a: try one rule at position a1: match, run the left context
+// backwards and the right context forwards, then apply. AL = 1 if applied. prev_eax is the caller's EAX
+// (its upper half shows in the result and in what is passed on).
+uint32_t vm_try(int inst, int32_t a0, int32_t a1, RuleHdr *r, uint32_t prev_eax);

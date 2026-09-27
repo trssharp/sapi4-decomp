@@ -174,11 +174,11 @@ uint32_t vm_cond(const CondVM *vm, uint8_t end, int32_t pos) {
 
 const RunVM run_vm[3] = {
     { 0x63738ce8, 0x637392e0, 0x6373924c, 0x63738cb8, 0x63738cd0, 0x63738cbc, 0x63739250, 0x63739340,
-      0x63739288, 0x637392e8, 0x63739220, 0x63739370, 0x6373927c },
+      0x63739288, 0x637392e8, 0x63739220, 0x63739370, 0x6373927c, 0x6373939c, 0x63739200, 0x63721ccc, 0x63738ce0, 8 },
     { 0x637393cc, 0x637394a8, 0x63739424, 0x637393ac, 0x637393b8, 0x637393b0, 0x63739428, 0x63739508,
-      0x63739450, 0x637394b0, 0x637393f8, 0x63739538, 0x63739448 },
+      0x63739450, 0x637394b0, 0x637393f8, 0x63739538, 0x63739448, 0x63739564, 0x637393d8, 0x63721f2c, 0x637393c4, 7 },
     { 0x637395b0, 0x63739688, 0x63739604, 0x63739574, 0x63739580, 0x63739578, 0x63739608, 0x637396e8,
-      0x63739630, 0x63739690, 0x637395d8, 0x63739718, 0x63739628 },
+      0x63739630, 0x63739690, 0x637395d8, 0x63739718, 0x63739628, 0x63739744, 0x637395bc, 0x63721f7c, 0x63739590, 30 },
 };
 
 uint8_t vm_run(int inst) {
@@ -238,4 +238,42 @@ backtrack: {
         }
     }
 #undef PCP
+}
+
+LAYOUT(RuleHdr, tape, 0x294);
+
+uint32_t vm_try(int inst, int32_t a0, int32_t a1, RuleHdr *r, uint32_t prev_eax) {
+    const RunVM *vm = &run_vm[inst];
+    uint8_t ok = 0;
+    if (inst == 0) {
+        if (*DLLVAR(int16_t, rule_vm[0].top) - r->len < 2) {
+            *DLLVAR(int32_t, vm->abort) = 1;
+            r->applied = 0;
+            return (prev_eax & 0xffff0000u) | ((uint16_t)r->len & 0xff00u);
+        }
+    } else if (*DLLVAR(int32_t, vm->abort) != 0) {
+        return prev_eax & ~0xffu;
+    }
+    uint32_t eax = (prev_eax & 0xffff0000u) | (uint16_t)r->len;
+    int16_t e = vm_match(inst, a1, eax);
+    if (e != 0) {
+        *DLLVAR(int16_t, vm->pos2) = (int16_t)(e - r->left);
+        *DLLVAR(int16_t, vm->step) = -1;
+        *DLLVAR(int16_t, vm->pos) = (int16_t)(r->left - 1);
+        if (vm_run(inst)) {
+            *DLLVAR(int16_t, vm->step) = 1;
+            *DLLVAR(int16_t, vm->pos) = e;
+            if (vm_run(inst) && vm_apply(inst, (int16_t)a0, r)) {
+                r->applied = 1;
+                ok = 1;
+            }
+        }
+    }
+    if (*DLLVAR(int16_t, vm->bound) != 0) {
+        *DLLVAR(int16_t, vm->bound) = 0;
+        uint8_t *v = DLLVAR(uint8_t, vm->vars);
+        for (uint32_t i = 0; i < vm->nvars; i++) v[i] = 0;
+    }
+    *DLLVAR(GPTR(char), vm->cur) = r->tape;
+    return ((uint32_t)GRAW(r->tape) & ~0xffu) | ok;
 }

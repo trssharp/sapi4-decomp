@@ -356,3 +356,6 @@ void hk_vm_cond_2(Emu *e, X86 *c) { E_RET(vm_cond(&cond_vm[2], (uint8_t)A(0), AI
 void hk_vm_run_0(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | vm_run(0)); }
 void hk_vm_run_1(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | vm_run(1)); }
 void hk_vm_run_2(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | vm_run(2)); }
+void hk_vm_try_0(Emu *e, X86 *c) { E_RET(vm_try(0, AI(0), AI(1), GPH(RuleHdr, A(2), sizeof(RuleHdr)), c->s.r[EAX])); }
+void hk_vm_try_1(Emu *e, X86 *c) { E_RET(vm_try(1, AI(0), AI(1), GPH(RuleHdr, A(2), sizeof(RuleHdr)), c->s.r[EAX])); }
+void hk_vm_try_2(Emu *e, X86 *c) { E_RET(vm_try(2, AI(0), AI(1), GPH(RuleHdr, A(2), sizeof(RuleHdr)), c->s.r[EAX])); }
