@@ -18,10 +18,12 @@ DLL keeps running around it) and must leave the output bit-identical:
 All three pass with every hook enabled. `SAPI4_HOOKS=none` gives the untouched original.
 
 The portable build (no emulator) is checked against the same originals: `make port-render-check`
-(38 golden renders, bit for bit), `make port-fe-check` (phone lists), `make port-lex-check` (the main
-lexicon), each also with the DLL's data baked in (`-baked-check`).
+(all 46 golden renders, bit for bit, speed and pitch included), `make port-tags-check` (84 tagged
+renders against the original), `make userlex-check` (user lexicon files), `make port-fe-check` (phone
+lists), `make port-lex-check` (the main lexicon); `make port-render-full-check` runs the fully baked
+binary (DLL data and voice files compiled in) with no voice directory at all.
 
-## Where this stands (end of session 5, 2026-09-27)
+## Where this stands (end of session 6, 2026-09-27)
 
 Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`):
 
@@ -29,15 +31,17 @@ Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability
 |---|---|---|
 | static function list (excl. 73 import stubs; approximate) | ~1,000 | ~185,000 of .text 184,302 (boundaries approximate) |
 | reached by the corpus | 536 | 145,161 |
-| **decompiled and verified** | **499** (441 reached, 58 reached only by the unit tests) | **139,247** |
-| share of the reached set | 82.3% | 92.1% |
-| share of all guest instructions executed | | 100.0% (rounded; what is left runs a few thousand instructions per render) |
+| **decompiled and verified** | **522** (445 reached, 77 reached only by the unit tests or the new checks) | **145,966** |
+| share of the reached set | 83.0% | 92.8% |
+| share of all guest instructions executed | | 100.0% (rounded) |
 
-**The portable build now speaks.** `make port-render-check` runs `build/port_render` - no emulator,
-no x86: the voices enumerated from the directory's .vce/.cfg files, a mode set up as the engine object
-does it, and the front end, unit stage and synthesizer run on their queues one after another - and
-all **38 golden renders (19 modes x 2 texts) come out bit for bit identical** to the original's.
-`make port-render-baked-check` does the same with the DLL's data compiled in.
+**Session 6: the portable renderer is feature-complete for the SAPI text path.** Speed and pitch are
+set as a SAPI client sets them, and all 46 golden renders come out identical with no emulator. Tagged
+text is covered too (84 renders of every SAPI 4 tag, well and badly formed, identical to the original).
+There is a fully baked single binary (the DLL's data and the voice files compiled in, 9.6 MB), and the
+per-user lexicon file is read. 23 functions (6.7 KB): the pitch and rate getters, the word module's
+alternative prosody (mode 0, 12 functions; no shipped voice opens it, so it is verified by a unit test
+on random word tapes) and the user lexicon reader (9 functions). See "Done, session 6".
 
 Session 5 added 200 functions (63.8 KB). First part: **the whole front end except one unused prosody
 mode** - the text input (wide text to single-byte, SAPI tags into the engine's escape sequences, line
@@ -265,6 +269,19 @@ Not decompiled in the front end: the alternative prosody of mode 0 (0x636798ce, 
 0x636744c4 converts (never used by SAPI's text calls), and the user lexicon file reader 0x636751e0
 (the emulator has no such file).
 
+## Done, session 6 (23 functions)
+
+| address(es) | name(s) | what | verified by |
+|---|---|---|---|
+| 0x63683791, 0x63687e15 | fe_get_pitch, unit_get_rate | ITTSAttributes::PitchGet / SpeedGet (PitchSet / SpeedSet were already C) | golden, hookdiff, port-render-check (the 8 speed/pitch renders) |
+| 0x636798ce, 0x6367930a, 0x636787f9, 0x6367877e, 0x63679b9f, 0x63679be9, 0x636787d0, 0x63678700, 0x63678aaf, 0x63679c29, 0x63679d05, 0x63678740 | pros_alt_a..d, alt_* | the word module's alternative prosody (mode 0): word records from the tapes, groups between phrase starts, a random step of each word's start/end pitch within the voice's table, cosine interpolation, Hz | unit only (random word tapes; each pass original then C, heap and rand state compared; negative controls caught): the engine never opens mode 0 |
+| 0x636751e0, 0x6367e6d7, 0x636750ad, 0x6367486a, 0x6367456e, 0x63674af3, 0x63674bf7, 0x63674be0, 0x63674cc1 | user_lex_load, module_dir, lex_word_bad, old_code, old_codes, lex_pron_convert, lex_pron_names, free_if_* | the per-user lexicon file and the pronunciation checks | userlex-check (11 good and broken files: original, hook build with heap, portable), unit (random phone strings) |
+
+Portable renderer (port/render.c): pitch and speed as a SAPI client sets them (read both, probe their
+limits by setting the extremes, restore, set the requested values clamped); tagged text; the front
+end's own rand state; the module path for the user lexicon. port/mkvoices.c generates the voice-file
+table for the fully baked build (`build/port_render_full`).
+
 ## The front end, mapped (sessions 3 to 5)
 
 Session 3 inferred roles from call counts on probe texts; session 4 read the code, which corrects one
@@ -390,27 +407,33 @@ load them from the DLL, like the voice data.
   thread), and each thread has its own MSVCRT rand state starting at 1 - the RoboSoft warble draws on
   the synthesizer thread's, the noise table on the set-up thread's (`vc_rand_use`).
 
+* **Tag records are whole phone records.** The front end writes a tag's text over the 100-byte
+  PhoneIn record, not just its 16-byte name; `strcat` into `->name` tripped the C library's object-size
+  check (a trap, not a crash report) as soon as a tag was longer than 16 characters.
+* **A misread crash.** That trap first looked like the unported alternative prosody aborting, and
+  12 functions were decompiled on the strength of it; a trace showed the engine never opens prosody
+  mode 0. They stay, verified by a unit test, but the lesson is the usual one: trace before acting.
+* **Every thread has its own rand.** The alternative prosody and the RoboSoft warble draw on their
+  threads' MSVCRT rand states; the portable driver keeps one per stage (front end, unit stage,
+  synthesizer), and the set-up thread's for the noise table.
+* **Two-character lookups need a terminator.** The older phone-code lookup builds "xy" in a 3-byte
+  local whose third byte was zeroed at entry; a 2-byte C array compared garbage (found by the unit
+  test, after the render check had shown a lexicon that loaded in one build and not the other).
+
 ## What is left, and the obstacles
 
-Reached and not yet decompiled: 95 functions, 11.4 KB. By area:
+Reached and not yet decompiled: 91 functions, 10.4 KB:
 
-1. **The SAPI / COM layer (~10 KB):** the engine object's set-up 0x6367a9ba (2 KB: queues, window,
-   audio-format negotiation, the three threads) and its constructor, the COM interfaces (ITTSCentral,
-   ITTSAttributes, ITTSEnum and their many 13-48 byte methods), the window procedure and the audio
-   side that hands PCM and bookmarks to the SAPI audio destination (0x6367a0b2, 0x6367b42d,
-   0x6367b1e1, 0x6367d470). The portable renderer replaces these with its driver (what the engine
-   object does is followed call for call: see port/render.c); a library build would expose its own
-   API instead of COM.
-2. **The user lexicon file reader** 0x636751e0 (892 B; reached, but the emulator has no such file).
-3. **C runtime helpers** (17 functions, 0.8 KB: _chkstk, the EH prolog, ...), which C does not need.
-4. **Never reached by the corpus** (~460 functions, ~40 KB): the alternative prosody of mode 0 (~5 KB),
-   the older senone-tree format (0x636727fd, 0x6367233c), the sample-rate converters (22050/11025 to
-   8000, 8000 to 11025, 22050 to 16000: only used when an audio destination refuses the voice's own
-   rate), the text mode 0x636744c4, error paths.
-5. **The portable renderer's coverage:** speed and pitch changes (ITTSAttributes; the golden set's 8
-   speed/pitch renders) are not driven yet, nor tagged text; the voice files are read from a directory
-   (a voice-baked build also needs the .vce files as a generated image: `vc_stg_open_mem` exists, the
-   enumeration would need a table in place of FindFirstFile).
+1. **The SAPI / COM layer (~10 KB):** the engine object's set-up 0x6367a9ba, the COM interfaces and
+   their small methods, the window procedure and the audio hand-off. The portable renderer follows
+   what they do call for call (port/render.c); a library would expose its own API instead of COM.
+2. **C runtime helpers** (17 functions, 0.8 KB), which C does not need.
+3. **Never reached by the corpus** (~440 functions, ~38 KB): the sample-rate converters (22050/11025
+   to 8000, 8000 to 11025, 22050 to 16000: only when an audio destination refuses the voice's rate),
+   the older senone-tree format, the text mode 0x636744c4, the lexicon COM methods (0x636844c2 ...),
+   error paths.
+4. **A library API.** port/render.c is a command-line driver; an app wants init / speak(text, flags,
+   callback) / set pitch-speed / reset, and a way to stop mid-utterance (the abort events exist).
 
 **Pointers.** The emulator is 32-bit guest on a 64-bit host, so C structs holding pointers cannot be
 shared between guest and native code the way OpenTV's 32-bit hook build shares them. Leaf functions
@@ -426,11 +449,9 @@ one thread (see the pitfalls), verified against the golden hashes.
 
 ## Estimate
 
-Session 5 added 200 functions / 63.8 KB and closed the loop: the portable build reproduces the golden
-corpus's 38 plain renders with no emulator. 92.1% of the reached bytes are C and effectively all
-executed instructions. What is left is the SAPI/COM shell (to be replaced by a library API rather
-than reproduced), speed/pitch/tag driving in the portable renderer, a baked voice image, and the
-code the corpus never reaches (decompile what a distribution needs: the 8 kHz converters if an
-output device may refuse 22 kHz; mode 0 prosody likely never). Revised estimate: **1-2 more
-sessions** to a portable library with speed, pitch and tags verified against the golden set and a
-voice-baked build; the unreached remainder is optional.
+Session 6 finished the portable text path: every golden render (speed and pitch included), tagged
+text and the user lexicon match the original with no emulator, and a single fully baked binary works.
+What remains is packaging (a small library API over port/render.c's sequence, stop/reset, a build for
+the target platforms) and, only if a distribution needs them, the unreached converters. Revised
+estimate: **one more session** for the library API and its checks; the unreached remainder is
+optional.
