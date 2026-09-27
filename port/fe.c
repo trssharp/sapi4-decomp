@@ -100,3 +100,4 @@ uint8_t vm_proc_guest(int inst, uint8_t n, int16_t *left, int16_t *len) {
     fprintf(stderr, "rule procedure %d/%d is not decompiled\n", inst, n);
     abort();
 }
+double lattice_cost_other(uint32_t fn, int32_t a, int32_t b) { (void)fn; (void)a; (void)b; abort(); }

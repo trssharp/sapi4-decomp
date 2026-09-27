@@ -738,3 +738,20 @@ void hk_fe_setup(Emu *e, X86 *c) {
     if (trace_file())
         fprintf(trace_file(), "setup pitch %u f50 %d flags %x\n", *GPH(uint16_t, A(2) + 0x8d8, 2), AI(4), fe->flags);
 }
+
+// ------------------------------------------------------------------ voice loading (containers.c, vload.c)
+void hk_next_prime(Emu *e, X86 *c) { E_RET((uint32_t)next_prime(AI(0))); }
+void hk_hash_new(Emu *e, X86 *c) { E_RET(host_to_guest(hash_new(AI(0)))); }
+void hk_hash_add(Emu *e, X86 *c) { E_RET((uint32_t)hash_add(A(0) ? GPH(HashTable, A(0), sizeof(HashTable)) : NULL, A(1) ? GSTR(A(1)) : NULL, AI(2))); }
+void hk_hash_add_grow(Emu *e, X86 *c) { E_RET((uint32_t)hash_add_grow(A(0) ? GPH(HashTable, A(0), sizeof(HashTable)) : NULL, A(1) ? GSTR(A(1)) : NULL, AI(2))); }
+void hk_phoneset_new(Emu *e, X86 *c) { E_RET(host_to_guest(phoneset_new(AI(0)))); }
+void hk_phoneset_set(Emu *e, X86 *c) { phoneset_set(GPH(NamedTable, A(0), sizeof(NamedTable)), GSTR(A(1)), AI(2), AI(3), AI(4), AI(5)); }
+void hk_phoneset_kind(Emu *e, X86 *c) { E_RET((uint32_t)phoneset_kind(GPH(NamedTable, A(0), sizeof(NamedTable)), AI(1))); }
+void hk_phoneset_nparts(Emu *e, X86 *c) { E_RET((uint32_t)phoneset_nparts(GPH(NamedTable, A(0), sizeof(NamedTable)), AI(1))); }
+void hk_phone_spec_split(Emu *e, X86 *c) { E_RET((uint32_t)phone_spec_split(GSTR(A(0)), GSTR(A(1)), GSTR(A(2)), GSTR(A(3)), GSTR(A(4)))); }
+void hk_phoneset_load(Emu *e, X86 *c) { E_RET((uint32_t)phoneset_load(GPH(uint8_t, A(0), 4), GSTR(A(1)), GPH(uint32_t, A(2), 4))); }
+void hk_senone_header_load(Emu *e, X86 *c) { E_RET((uint32_t)senone_header_load(GPH(uint8_t, A(0), 4), GPH(SenoneTree, A(1), sizeof(SenoneTree)), GPH(uint32_t, A(2), 4))); }
+void hk_senone_tree_load(Emu *e, X86 *c) {
+    E_RET((uint32_t)senone_tree_load(GPH(uint8_t, A(0), 4), GSTR(A(1)), GPH(PhoneSet, A(2), sizeof(PhoneSet)), GPH(uint32_t, A(3), 4)));
+}
+void hk_senone_tree_load2(Emu *e, X86 *c) { hk_senone_tree_load(e, c); }

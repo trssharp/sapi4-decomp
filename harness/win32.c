@@ -76,3 +76,45 @@ int32_t vc_CoInitialize(void) { uint32_t a[1] = { 0 }; return (int32_t)api(0x636
 void vc_CoUninitialize(void) { api(0x6369e220, 0, NULL); }
 uint32_t vc_CreateEventA(int32_t manual, int32_t initial) { uint32_t a[4] = { 0, (uint32_t)manual, (uint32_t)initial, 0 }; return api(0x6369e07c, 4, a); }
 void vc_InitializeCriticalSection(void *cs) { uint32_t a[1] = { g(cs) }; api(0x6369e054, 1, a); }
+
+// storage through the emulator's COM objects (their methods are host functions behind guest vtables)
+int32_t vc_stg_open_stream(void *stg, const uint16_t *name, void **stm) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - 16u) & ~15u;
+    uint32_t slot = c->s.r[ESP];
+    *(uint32_t *)(void *)(decomp_guest_mem + slot) = 0;
+    uint32_t a[5] = { g(name), 0, 0x10, 0, slot };
+    int32_t r = vc_com_call(stg, 4, 5, a);
+    uint32_t o = *(uint32_t *)(void *)(decomp_guest_mem + slot);
+    c->s.r[ESP] = sp;
+    *stm = o ? decomp_guest_mem + o : NULL;
+    return r;
+}
+int32_t vc_stm_read(void *stm, void *buf, uint32_t n, uint32_t *got) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    // a C local is not guest memory: read into the guest stack and copy
+    int host = (uint8_t *)buf < decomp_guest_mem || (uint8_t *)buf >= decomp_guest_mem + decomp_emu->mem_size;
+    c->s.r[ESP] = (sp - 16u - (host ? n : 0)) & ~15u;
+    uint32_t slot = c->s.r[ESP], dst = host ? slot + 16 : g(buf);
+    uint32_t a[3] = { dst, n, got ? slot : 0 };
+    int32_t r = vc_com_call(stm, 3, 3, a);
+    if (got) *got = *(uint32_t *)(void *)(decomp_guest_mem + slot);
+    if (host) memcpy(buf, decomp_guest_mem + dst, n);
+    c->s.r[ESP] = sp;
+    return r;
+}
+int32_t vc_stm_size(void *stm, uint32_t *size) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - 0x60u) & ~15u;
+    uint32_t st = c->s.r[ESP];
+    uint32_t a[2] = { st, 1 };
+    int32_t r = vc_com_call(stm, 12, 2, a);
+    *size = *(uint32_t *)(void *)(decomp_guest_mem + st + 8);
+    c->s.r[ESP] = sp;
+    return r;
+}
+void *vc_stg_open_file(const char *path) { (void)path; return NULL; }
+void *vc_stg_open_mem(const void *data, size_t len) { (void)data; (void)len; return NULL; }

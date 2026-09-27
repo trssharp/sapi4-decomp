@@ -461,14 +461,6 @@ void words_abort(int32_t idx) {
     for (int k = 1; k < 9; k++) vc_free(GP(char, S->out[k]));
 }
 
-void *calloc_n(uint32_t n, uint32_t size) { return n ? vc_calloc(n, size) : NULL; }
-
-char *str_dup0(const char *s) {
-    char *p = calloc_n(1, (uint32_t)strlen(s) + 1);
-    strcpy(p, s);
-    return p;
-}
-
 // the phone list as text, the floats exactly (for comparing builds; not part of the engine)
 void phones_print(FILE *f, const PhoneIn *ph, int32_t n) {
     fprintf(f, "phrase %d\n", n);

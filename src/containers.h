@@ -6,17 +6,49 @@
 typedef struct HashEntry { int32_t value; GPTR(const char) key; } HashEntry;
 typedef struct HashTable {
     uint32_t size;          // 0x00 buckets
-    int32_t _04;
+    int32_t count;          // 0x04
     GPTR(HashEntry) entries;  // 0x08
     int32_t lookups;        // 0x0c statistics
     int32_t probes;         // 0x10
+    int32_t regrows;        // 0x14
+    int32_t moved;          // 0x18
 } HashTable;
 
 // @0x63675e95 stdcall: find key (hash: sum of char << (15, 14, ... 0, 15, ...), linear probing, strcmp).
 // Found: *out = value, returns 0. Not found: *out = the free bucket, returns -1 (also on NULL args).
 int hash_lookup(HashTable *t, const char *key, int32_t *out);
 
-typedef struct NamedTable { int32_t _00; GPTR(HashTable) names; GPTR(GPTR(void)) items; } NamedTable;
+// a phone set (the voice's PhoneFile stream): names, their indices, and what each one is made of
+typedef struct NamedTable {
+    GPTR(const char) name;  // 0x00 the stream's name
+    GPTR(HashTable) names;  // 0x04 name -> index
+    GPTR(GPTR(void)) items; // 0x08 index -> name (malloc)
+    GPTR(uint8_t) base;     // 0x0c the phone it is a context variant of (itself if it is none)
+    GPTR(uint8_t) left;     // 0x10 "base(left,right)ctx": left context phone (0xff: none)
+    GPTR(uint8_t) right;    // 0x14 right context phone
+    GPTR(uint8_t) ctx;      // 0x18 the rest's first character
+    GPTR(uint8_t) nparts;   // 0x1c parts a split phone has
+    GPTR(int32_t) kind;     // 0x20 0, -2 (split), ...
+    int32_t count;          // 0x24
+    int32_t nzero;          // 0x28 phones of kind 0
+    int32_t nsplit;         // 0x2c phones of kind -2
+    int32_t _30, _34;
+} NamedTable;
+void *calloc_n(uint32_t n, uint32_t size);          // @0x63674478 stdcall: calloc, NULL when n is 0
+char *str_dup0(const char *s);                      // @0x6368021c stdcall: a copy (calloc_n)
+// @0x6367fbb1 stdcall: the smallest prime >= n (n at least 2)
+int32_t next_prime(int32_t n);
+HashTable *hash_new(int32_t n);                                 // @0x63675db1 stdcall: room for n
+int hash_add(HashTable *t, const char *key, int32_t value);     // @0x63675f19 stdcall: 0, or -1 (clash)
+int hash_add_grow(HashTable *t, const char *key, int32_t value);    // @0x63675de0 stdcall: rehashing at half full
+NamedTable *phoneset_new(int32_t n);                            // @0x6367fab1 stdcall
+void phoneset_set(NamedTable *ps, const char *name, int32_t idx, int32_t base, int32_t kind, int32_t nparts);  // @0x6367f9d0
+int32_t phoneset_kind(const NamedTable *ps, int32_t i);         // @0x6367fb66 stdcall
+int32_t phoneset_nparts(const NamedTable *ps, int32_t i);       // @0x6367fb77 stdcall
+// @0x6367fa1d stdcall: "a(b,c)d" split into its parts; how many there were (1-4)
+int32_t phone_spec_split(const char *s, char *a, char *b, char *c, char *d);
+// @0x6367f73d stdcall: the phone set from a stream of lines "name kind a base b" (see the code)
+int32_t phoneset_load(void *stg, const char *name, GPTR(NamedTable) *out);
 // @0x6367fb1e stdcall: index of a name, or -1
 int named_index(const NamedTable *t, const char *key);
 // @0x6367fb43 stdcall: item i

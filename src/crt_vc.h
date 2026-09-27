@@ -50,6 +50,15 @@ void vc_DebugBreak(void);
 uint32_t vc_com_release(void *obj);
 // OLE32 CoCreateInstance with a CLSID and IID in the DLL's data (by preferred-base address); *out the
 // object (0 on failure). A portable build has no COM classes: it always fails (REGDB_E_CLASSNOTREG).
+// OLE structured storage as the engine uses it (read-only): IStorage::OpenStream (name wide, share mode
+// 0x10), IStream::Read (got may be NULL), IStream::Stat's size; objects released with vc_com_release.
+// The hook build calls the emulator's objects through their vtables; a portable build has its own
+// over src/cfb.c (vc_stg_open_file / vc_stg_open_mem give the root storage of a voice file).
+int32_t vc_stg_open_stream(void *stg, const uint16_t *name, void **stm);
+int32_t vc_stm_read(void *stm, void *buf, uint32_t n, uint32_t *got);
+int32_t vc_stm_size(void *stm, uint32_t *size);
+void *vc_stg_open_file(const char *path);
+void *vc_stg_open_mem(const void *data, size_t len);
 // OLE32 CoInitialize(NULL) / CoUninitialize (nothing to do in a portable build)
 int32_t vc_CoInitialize(void);
 void vc_CoUninitialize(void);

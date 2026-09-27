@@ -93,7 +93,63 @@ uint32_t vc_WaitForSingleObject(uint32_t h, uint32_t ms) { return vc_WaitForMult
 int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) { (void)hwnd; (void)msg; (void)wp; (void)lp; return 1; }
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio) { (void)h; (void)prio; return 1; }
 void vc_DebugBreak(void) {}
-uint32_t vc_com_release(void *obj) { (void)obj; return 0; }
+// storage objects of the portable build: a storage (a compound file's root) or a stream (its bytes)
+#include "cfb.h"
+#include <string.h>
+typedef struct VcObj { int kind; int refs; Cfb *f; uint32_t dir; uint8_t *data; size_t len, pos; } VcObj;
+static void *vc_obj(int kind, Cfb *f, uint32_t dir) {
+    VcObj *o = calloc(1, sizeof *o);
+    if (!o) return NULL;
+    o->kind = kind;
+    o->refs = 1;
+    o->f = f;
+    o->dir = dir;
+    return o;
+}
+void *vc_stg_open_file(const char *path) {
+    Cfb *f = cfb_open(path);
+    return f ? vc_obj(1, f, 0) : NULL;
+}
+void *vc_stg_open_mem(const void *data, size_t len) {
+    Cfb *f = cfb_open_mem(data, len);
+    return f ? vc_obj(1, f, 0) : NULL;
+}
+int32_t vc_stg_open_stream(void *stg, const uint16_t *name, void **stm) {
+    VcObj *s = stg;
+    char n[64];
+    int k = 0;
+    for (; name[k] && k < 63; k++) n[k] = (char)name[k];
+    n[k] = 0;
+    *stm = NULL;
+    int i = cfb_find(s->f, s->f->ents[s->dir].child, n);
+    if (i < 0 || s->f->ents[i].type != 2) return (int32_t)0x80030002u;     // STG_E_FILENOTFOUND
+    VcObj *o = vc_obj(2, s->f, (uint32_t)i);
+    s->f->refs++;
+    o->data = cfb_stream(s->f, &s->f->ents[i], &o->len);
+    *stm = o;
+    return 0;
+}
+int32_t vc_stm_read(void *stm, void *buf, uint32_t n, uint32_t *got) {
+    VcObj *o = stm;
+    size_t k = o->pos < o->len ? o->len - o->pos : 0;
+    if (k > n) k = n;
+    memcpy(buf, o->data + o->pos, k);
+    o->pos += k;
+    if (got) *got = (uint32_t)k;
+    return 0;       // (S_OK even on a short read, as OLE's)
+}
+int32_t vc_stm_size(void *stm, uint32_t *size) {
+    *size = (uint32_t)((VcObj *)stm)->len;
+    return 0;
+}
+uint32_t vc_com_release(void *obj) {
+    VcObj *o = obj;
+    if (!o || --o->refs > 0) return o ? (uint32_t)o->refs : 0;
+    if (o->kind == 2) free(o->data);
+    cfb_release(o->f);
+    free(o);
+    return 0;
+}
 int32_t vc_CoInitialize(void) { return 0; }
 void vc_CoUninitialize(void) {}
 int32_t vc_CoCreateInstance(uint32_t clsid, uint32_t ctx, uint32_t iid, void **out) {

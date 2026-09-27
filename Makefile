@@ -59,7 +59,7 @@ portable-check:
 
 # the portable build, first piece: the main lexicon with the C alone, against the original in the
 # emulator (the word list: the system's, if there is one)
-PORTC = src/fe_vm.c src/fe_procs.c src/fe_lex.c src/fe_rules.c src/vcrt.c src/crt_vc.c
+PORTC = src/fe_vm.c src/fe_procs.c src/fe_lex.c src/fe_rules.c src/vcrt.c src/crt_vc.c src/cfb.c
 build/port_lex: port/lex.c port/dllimage.c port/dllimage.h port/lexdump.h $(PORTC) $(wildcard src/*.h)
 	@mkdir -p build
 	$(CC) -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fno-builtin -Isrc -Iport -o $@ port/lex.c port/dllimage.c $(PORTC) -lm
@@ -88,7 +88,7 @@ port-lex-baked-check: build/port_lex_baked port-lex-check
 # the portable front end: text to the unit stage's phone lists with the C alone, against the phone lists
 # the original front end produces in the emulator (golden texts, plain)
 PORTFE = $(PORTC) src/fe_small.c src/fe_word.c src/fe_phrase.c src/fe_output.c src/fe_text.c src/fe_lexer.c \
-	src/fe_split.c src/fe_input.c src/fe_reader.c src/fe_phones.c src/fe_out.c src/fe_init.c src/queue.c src/tags.c
+	src/fe_split.c src/fe_input.c src/fe_reader.c src/fe_phones.c src/fe_out.c src/fe_init.c src/queue.c src/tags.c src/containers.c
 build/port_fe: port/fe.c port/dllimage.c port/dllimage.h $(PORTFE) $(wildcard src/*.h)
 	@mkdir -p build
 	$(PORTCC) -o $@ port/fe.c port/dllimage.c $(PORTFE) -lm

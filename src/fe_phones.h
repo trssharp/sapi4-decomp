@@ -5,6 +5,7 @@
 #include "gptr.h"
 #include "fe_reader.h"
 #include "unitsel.h"
+#include "containers.h"
 #include <stdio.h>
 
 // @0x636761ab cdecl: five tapes of word object idx (0x585, 0xb05, 0x1085, 0x1605, 0x438e) copied into
@@ -28,8 +29,6 @@ int32_t words_phrase(int32_t idx);                               // @0x6367764f 
 void phrase_free(Prosody *p, int32_t mode);                      // @0x63677da6 stdcall
 int32_t phones_build(int32_t idx, PhoneIn *out, int32_t final, int32_t unused);  // @0x636778a7 stdcall
 void words_abort(int32_t idx);                                   // @0x63677911 stdcall
-char *str_dup0(const char *s);                                   // @0x6368021c stdcall (calloc)
-void *calloc_n(uint32_t n, uint32_t size);                       // @0x63674478 stdcall: NULL when n is 0
 
 // not decompiled yet (harness/guest.c): the alternative prosody (mode 0)
 void pros_alt_a(Prosody *p);                                     // @0x636798ce
