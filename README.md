@@ -40,6 +40,7 @@ SAPI4_HOOK_STATS=1   build/sapi4_speak ...                # how often each hook 
 | `tools/dataflow.py DLL FROM TO` | symbolic x87/x86 execution of a straight-line run: every store as an expression with the float roundings marked |
 | `tools/eaxuse.py DLL work ADDR...` | which callers read EAX / EDX / ST0 after a call (implicit return values) |
 | `tools/dupes.py DLL work` / `tools/instances.py DLL work ADDR...` | groups of same-code functions (template copies) and each copy's globals |
+| `tools/families.py DLL work` | near-duplicate functions by mnemonic sequence (template copies with edits) |
 | `tools/hookdiff.sh` | all modes x 9 texts, hooks vs the original: PCM and final guest heap |
 | `tools/progress.py work` | the numbers in docs/PROGRESS.md |
 

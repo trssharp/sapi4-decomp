@@ -17,18 +17,25 @@ DLL keeps running around it) and must leave the output bit-identical:
 
 All three pass with every hook enabled. `SAPI4_HOOKS=none` gives the untouched original.
 
-## Where this stands (session 2, 2026-09-27)
+## Where this stands (session 3, 2026-09-26)
 
-Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`,
-whose corpus now also includes the hookdiff texts):
+Measured by `tools/progress.py` (static list from `tools/funcs.py`, reachability from `tools/cover.sh`):
 
 | | functions | bytes |
 |---|---|---|
-| static function list (excl. 73 import stubs; approximate) | ~1,000 | ~183,000 of .text 184,302 |
+| static function list (excl. 73 import stubs; approximate) | ~1,000 | ~185,000 of .text 184,302 (boundaries approximate) |
 | reached by the corpus | 536 | 145,161 |
-| **decompiled and verified** | **111** (104 reached, 7 reached only by the unit tests) | **18,286** |
-| share of the reached set | 19.4% | 12.1% |
-| share of all guest instructions executed | | 89.2% |
+| **decompiled and verified** | **170** (157 reached, 13 reached only by the unit tests) | **30,988** |
+| share of the reached set | 29.3% | 20.6% |
+| share of all guest instructions executed | | 94.6% |
+
+Session 3 added 59 hooked functions (12.7 KB): the thread plumbing of the unit stage and the
+synthesizer, most of the alternative-unit search, and the core of the front end's rule machine (see
+"Done, session 3"). Unit selection is now complete except the lattice phrase rewrite 0x63685d72 and
+the never-reached tree query 0x6367233c; the synthesizer except its init 0x636819e6 (C++ exception
+frame) and resamplers (never reached).
+
+History of the earlier sessions:
 
 Session 1 did the synthesizer's signal path (38 functions). Session 2 added 73:
 * **Unit stage** (the thread between front end and synthesizer): SAPI tag lexer and parser (11),
@@ -165,6 +172,47 @@ still has to come from this binary.
 `src/crt_vc.c` also carries the VC runtime's qsort algorithm (the order of equal elements shows in
 the output) and `src/x87.h` the x87 conversions (fistp, _ftol, the |x| idiom).
 
+## Done, session 3 (59 functions)
+
+| address(es) | name(s) | what | verified by |
+|---|---|---|---|
+| (IAT thunks) | harness/win32.c | EnterCriticalSection / WaitForMultipleObjects park the coroutine and retry; LeaveCS, SetEvent, ResetEvent, PostMessageA, SetThreadPriority call the emulator's own thunks; the wait logic is shared with the emulator (`emu_wait_poll`, `emu_cs_try_enter`) | hookdiff (heap) |
+| 0x63684899, 0x63684905, 0x6368498f, 0x636849ab, 0x636849cd, 0x63684a29, 0x63684aa1, 0x6368447a, 0x6368225f, 0x63687cfd | queue_* (src/queue.c) | stage message queue: growth, high/low-water events, push/pop, locked getters | golden, hookdiff (heap) |
+| 0x63687e26, 0x63687d4b, 0x63687de5, 0x63687fbb | unit_rate_update, unit_set_rate, unit_reset_rate, unit_set_amp | duration scale, final silences, notifications | golden, hookdiff, unit |
+| 0x63687d3f, 0x63687ba4, 0x63687974, 0x6368571f | unit_thread_proc, unit_thread_loop, unit_phrase, unit_send | unit-stage thread, phrase driver, hand-off to the synthesizer (HOOKY) | golden, hookdiff (heap) |
+| 0x63686614, 0x63685c20, 0x63685d18, 0x636882fc, 0x63685d00, 0x63685bf7, 0x636881b0, 0x636882d6 | unit_lattice, lattice_match, unit_span_lookup, lattice_viterbi, lattice_cost, array_lacks, intvec_append, vecarray_append | alternative-unit search: rule matching, span lookup, Viterbi over the lattice | golden, hookdiff, unit (synthetic lattices with a competing cost function, heap snapshots) |
+| 0x636822a1, 0x63681ede, 0x63681cb2, 0x63681b7e, 0x63674d18, 0x6367ddfb | voc_thread_proc, voc_thread_loop, voc_synth_request, voc_send_audio, phone_table_index, identity32 | synthesis thread, request loop (unit to float samples, growth, clipping), audio hand-off with flow control | golden, check, hookdiff |
+| 3 instances each (A 0x6368.., B 0x6369.., C 0x6369..; addresses in src/fe_vm.c) | vm_shift_right/left, vm_pop_range, vm_push_until, vm_skip_block, vm_move, vm_cond, vm_run, vm_try | the front end's rule machine: tape shifts, stack moves, bytecode block skip, condition interpreter, the rule runner with backtracking over choice points, trying one rule (27 hooks, one C function per routine) | golden, hookdiff, unit (random bytecode per instance; the original is aborted-safe) |
+
+`tools/families.py` finds near-duplicate functions (same mnemonic sequence, different globals or
+small edits) - that is how the three rule-machine instances were matched; instance A differs in
+reading one position as int16 and in its apply guard.
+
+## The front end, mapped (session 3)
+
+Which module does what was inferred from call counts of the original on probe texts (`tools/cover.sh`
+style coverage of single renders: "the the the the", three nonwords, four dictionary words, numbers).
+These attributions are **inferences from counts, not yet confirmed by reading every function**.
+
+| part | functions | bytes | done | role (inferred) |
+|---|---|---|---|---|
+| rule machine A (0x6368c997..) + callbacks (26 fns, 5.9 KB, table 0x63721cdc: 14 entries) | 15 | 14,016 | 9 fns, 2,203 B | runs 3x more on numbers than words: text normalisation |
+| rule machine B (0x636909b7..) + callbacks (13 fns, 1.3 KB, table 0x63721f3c: 14 entries) | 31 | 13,790 | 9 fns, 2,180 B | runs on every word, most on dictionary words: post-lexical / phrasing rules (least certain) |
+| rule machine C (0x63693ef8..) + callbacks (50 fns, 1.9 KB, table 0x63721f8c: 59 entries) | 61 | 13,035 | 10 fns, 2,188 B | 6x more rule tries on nonwords, and most of its callbacks run only for nonwords: **letter-to-sound** (plus stress/syllable rules that also run on known words) |
+| nonword-only driver 0x63698f1a..0x6369986b | 12 | 2,385 | 0 | called only for out-of-dictionary words: the letter-to-sound driver |
+| dictionary 0x6369986b..0x6369a4ea | 13 | 3,199 | 2 | 0x6369986b decodes an entry (<= 31 letters) from the 164 KB table at 0x636d4340 through a pair table at 0x636d413e (digram-style expansion into 0x63739910); 0x6369a0c9 searches the 111 KB table at 0x636fdbbc (many calls per word) |
+| word modules 0x63696cd4..0x63698f1a | 35 | 8,774 | some tape helpers | word loop, tables at 0x636b99a8 (35 KB) and 0x636c2a30 (22 KB) |
+| rest 0x6369a4ea..0x6369d000 | 48 | 10,943 | helpers | phrasing, prosody, text spans |
+
+Rule bytecode is data: A about 3.4 KB at 0x636a2519, B about 7.6 KB at 0x636a5ea1, C about 29 KB at
+0x636af2a1; the lexicon data is roughly 164 + 111 + 71 (.data 0x63722094) + 35 + 22 KB. None of it
+needs decompiling - the portable build loads it from the DLL at run time, like the voice data - but
+the decoders and the three rule-machine executors do.
+
+So "the lexicon and letter-to-sound" is about 16 KB of the code (rule machine C, the LTS driver, the
+dictionary decoders) plus the 59 small C callbacks; the rest of the front end's ~95 KB is the other
+two rule machines, normalisation glue and phrasing.
+
 ## Pitfalls found so far
 
 * **Implicit return values.** `codec_bytes_to_floats` looks void, but its caller adds EAX (the index
@@ -216,24 +264,31 @@ the output) and `src/x87.h` the x87 conversions (fistp, _ftol, the |x| idiom).
   delta frame with no preceding full frame read stale stack in the original (C reads zeros). The hook
   build prints `decomp WARNING` if any of these ever happens; none has in any render.
 
+* **Blocking in a hook.** A decompiled thread loop that waits must park where the original waits;
+  `vc_WaitForMultipleObjects` / `vc_EnterCriticalSection` poll with the emulator's own wait logic and
+  park the coroutine until they succeed. Called outside a `HOOKY` hook they fault, on purpose.
+* **Originals that read past their arrays.** `vecarray_append` accepts an index equal to the count
+  and reads one element past the end; random tests stay inside what the engine can produce.
+* **Random bytecode can hang the original.** Unit tests of the rule machine generate structured
+  bytecode (every block closed, filler after each closer) and abort if the original faults, since a
+  faulted emulator CPU leaves the next comparison meaningless.
+
 ## What is left, and the obstacles
 
-1. **Thread plumbing** (both stages, ~25 functions, ~5 KB): queues with high/low-water events,
-   PostMessage notifications, the thread loops, the synthesis request loop and the audio hand-off.
-   Now hookable with `HOOKY` coroutines; needs vc_* equivalents of EnterCriticalSection /
-   SetEvent / ResetEvent / PostMessageA that do exactly what the emulator's do (including blocking).
-2. **The unit stage's alternative-unit lattice** (0x63686614, 0x63685c20, 0x636882fc, 0x63685d72:
-   ~3.7 KB, mostly never reached - 53 of 718 instructions of the Viterbi-like search run). Needs a
-   corpus that reaches it, or unit tests on synthetic lattices, which need its data structures.
-3. **The front end** (~290 functions, ~90 KB): the rule modules are generated code - once the template
-   families are known (dupes.py finds 50+ groups, up to 2 x 3,065 bytes), one decompilation covers
-   several copies; the rest is text normalisation, lexicon and letter-to-sound, much of it integer and
-   string code over the vcrt layer.
+1. **The front end** (~290 functions, ~95 KB reached, ~27% of it by function count now started):
+   the three rule-machine executors are the big pieces - rule execution (3 x ~3,065 B), rule match
+   (3 x ~1,886 B), the module main loop (3 x ~3.4 KB), rule apply (811-860 B x 3) and the 104 small
+   callbacks; then the dictionary decoders, the letter-to-sound driver, normalisation glue and phrasing.
+   The three instances share code, so each routine is done once and hooked three times.
+2. **Unit stage leftovers**: the lattice phrase rewrite 0x63685d72 (2,210 B, 53 of 718 instructions
+   reached) and the tree query 0x6367233c (never reached). Both run through `harness/guest.c`.
+3. **Synthesizer leftovers**: its init 0x636819e6 (has a C++ exception frame) and the resamplers
+   (never reached).
 4. **Voice loading / COM** (ITTSEnum::Select subtree, ~20 KB) - to be replaced rather than reproduced.
-5. **~480 functions the corpus never reaches** (~40 KB).
+5. **~460 functions the corpus never reaches** (~40 KB).
 6. **Data extraction** for the portable build (.rdata 515 KB, .data 120 KB), and a portable driver.
-   `make portable-check` lists what the portable build still needs from the original (currently one
-   function, 0x6367233c, reached only through `harness/guest.c`).
+   `make portable-check` lists every original function the portable build still calls through
+   `harness/guest.c` (currently 12 addresses: the three rule-machine stubs x3, plus the three above).
 
 **Pointers.** The emulator is 32-bit guest on a 64-bit host, so C structs holding pointers cannot be
 shared between guest and native code the way OpenTV's 32-bit hook build shares them. Leaf functions
@@ -249,9 +304,11 @@ the golden hashes.
 
 ## Estimate
 
-Session 2 added 73 functions / 10.4 KB, including two tangled x87 state machines (the contour passes,
-done as block-structured C with the original's basic blocks as labels) and the infrastructure that
-the rest needs (vcrt layer, coroutine hooks, guest calls, template grouping). Remaining reached code is
-~128 KB, most of it front end. Revised estimate: **4-7 more weeks** of focused sessions to a portable
-build that reproduces the golden corpus - the template grouping should make the rule modules cheaper
-than their byte count suggests, the lexicon / letter-to-sound code is the unknown.
+Session 3 added 59 functions / 12.7 KB, including all the thread plumbing (which needed blocking
+coroutine hooks) and the core of the rule machine. Of the reached code, 20.6% of bytes are done, and
+94.6% of executed instructions now run decompiled C. Remaining reached code is ~114 KB, ~85 KB of it
+front end. The front end is now mapped: the letter-to-sound and lexicon code is about 16 KB plus
+small callbacks, not the unknown it was. Revised estimate: **4-6 more weeks** of focused sessions to a
+portable build that reproduces the golden corpus; the risk is concentrated in the three large
+rule-machine routines (execution, match, main loop), which are tangled but shared by all three
+instances.

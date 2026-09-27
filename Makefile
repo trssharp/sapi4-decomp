@@ -54,5 +54,5 @@ hookdiff: build/sapi4_speak
 # src/ must also compile as the portable build (real pointers, no emulator)
 portable-check:
 	$(CC) -std=c11 -Wall -Wextra -Wno-unused-parameter -Werror -fsyntax-only src/*.c
-	@echo "functions the portable build still needs (called through harness/guest.c):"; grep -o 'guest_call(0x[0-9a-f]*' harness/guest.c | sort -u
+	@echo "functions the portable build still needs (called through harness/guest.c):"; grep -o '0x636[0-9a-f]\{5\}' harness/guest.c | sort -u | tr '\n' ' '; echo
 .PHONY: portable-check
