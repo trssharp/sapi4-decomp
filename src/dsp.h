@@ -37,3 +37,11 @@ void dsp_add_halves(float *dst, const float *src, int off, int n, int len);
 int dsp_cmp_float(const void *a, const void *b);
 // @0x63688708 stdcall: sort x ascending (VC qsort); returns 1 if it was already sorted
 int dsp_sort_floats(float *x, int n);
+// @0x6367131b stdcall: fit one period of src (srcn samples) into dst (dstn, cleared first): dst[0] =
+// src[0], then the first and the last min(srcn,dstn)-1 samples are added in, weighted by
+// window[(int)(0.5 + k*winn/min)] (a cross-fade when the period shrinks).
+void dsp_fit_period(const float *src, int srcn, float *dst, int dstn, const float *window, int winn);
+// @0x636713b8 stdcall: one excitation period into dst: reversed (flag), copied (same length) or fitted
+// (dsp_fit_period), then scaled by gain unless gain is 1.0 (or NaN).
+void dsp_period(const float *src, int srcn, float *dst, int dstn, float gain, int reverse,
+                const float *window, int winn);

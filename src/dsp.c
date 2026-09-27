@@ -4,6 +4,7 @@
 #include "dsp.h"
 #include "x87.h"
 #include "crt_vc.h"
+#include <string.h>
 
 void dsp_allpole(const float *a, int order, float *mem, float *x, int n) {
     for (; n > 0; n--, x++) {
@@ -118,4 +119,26 @@ int dsp_sort_floats(float *x, int n) {
         if (x[i - 1] > x[i]) sorted = 0;
     vc_qsort(x, (size_t)n, 4, dsp_cmp_float);
     return sorted;
+}
+
+void dsp_fit_period(const float *src, int srcn, float *dst, int dstn, const float *window, int winn) {
+    memset(dst, 0, (size_t)dstn * 4);
+    int h = srcn > dstn ? dstn : srcn;
+    double step = (double)winn / (double)h;
+    dst[0] = src[0];
+    double acc = 0.5;
+    for (int k = 1; k < h; k++) {
+        acc = acc + step;
+        double w = window[x87_ftol(acc)];
+        dst[k] = (float)((double)src[k] * w + dst[k]);
+        dst[dstn - k] = (float)(w * src[srcn - k] + dst[dstn - k]);
+    }
+}
+
+void dsp_period(const float *src, int srcn, float *dst, int dstn, float gain, int reverse,
+                const float *window, int winn) {
+    if (reverse) dsp_reverse(src, dstn, dst);
+    else if (srcn == dstn) memcpy(dst, src, (size_t)dstn * 4);
+    else dsp_fit_period(src, srcn, dst, dstn, window, winn);
+    if (!(gain == 1.0f || isnan(gain))) dsp_scale(dst, dstn, gain);
 }

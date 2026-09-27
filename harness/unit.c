@@ -8,6 +8,7 @@
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
+#include "codec.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -171,6 +172,37 @@ static void t_lpc(int iter) {
     check("lpc_from_lsf", iter, "lsf (sorted in place)", gp(gl, 4u * order), l, 4u * order);
 }
 
+static void t_period(int iter) {
+    int srcn = rndi(1, 300), dstn = rndi(1, 300), winn = rndi(1, 256);
+    if (iter % 4 == 0) dstn = srcn;
+    float win[300], s[300], d1[300];
+    for (int i = 0; i <= winn; i++) win[i] = (float)i / winn;
+    for (int i = 0; i < 300; i++) s[i] = rndf();
+    for (int i = 0; i < dstn; i++) d1[i] = rndf();
+    uint32_t gs = galloc(4u * 300), gd = galloc(4u * dstn), gw = galloc(4u * (winn + 1));
+    memcpy(gp(gs, 1200), s, 1200); memcpy(gp(gd, 4u * dstn), d1, 4u * dstn); memcpy(gp(gw, 4u * (winn + 1)), win, 4u * (winn + 1));
+    uint32_t a[8] = { gs, (uint32_t)srcn, gd, (uint32_t)dstn, gw, (uint32_t)winn };
+    call(0x6367131b, 6, a); dsp_fit_period(s, srcn, d1, dstn, win, winn);
+    check("dsp_fit_period", iter, "dst", gp(gd, 4u * dstn), d1, 4u * dstn);
+    float g = (iter % 3 == 0) ? 1.0f : rndf();
+    int rev = (iter % 5 == 1);
+    a[0] = gs; a[1] = (uint32_t)srcn; a[2] = gd; a[3] = (uint32_t)dstn; a[4] = fbits(g); a[5] = (uint32_t)rev; a[6] = gw; a[7] = (uint32_t)winn;
+    if (rev && dstn > 300) rev = 0;
+    call(0x636713b8, 8, a); dsp_period(s, srcn, d1, dstn, g, rev, win, winn);
+    check("dsp_period", iter, "dst", gp(gd, 4u * dstn), d1, 4u * dstn);
+    // byte decoder with escapes
+    int8_t b[600]; float o[200];
+    int n = rndi(0, 150);
+    for (int i = 0; i < 600; i++) { uint32_t r = rnd() % 10; b[i] = r == 0 ? 0x7f : r == 1 ? -128 : (int8_t)rnd(); }
+    uint32_t gb = galloc(600), go = galloc(4u * 200);
+    memcpy(gp(gb, 600), b, 600);
+    int base = rndi(-100, 100);
+    a[0] = gb; a[1] = (uint32_t)n; a[2] = go; a[3] = (uint32_t)base;
+    uint32_t r1 = call(0x63675c05, 4, a); int r2 = codec_bytes_to_floats(b, n, o, base);
+    check("codec_bytes_to_floats", iter, "EAX (bytes consumed)", &r1, &r2, 4);
+    check("codec_bytes_to_floats", iter, "out", gp(go, 4u * n), o, 4u * n);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -188,6 +220,7 @@ int main(int argc, char **argv) {
         t_more(it);
         t_fft(it);
         t_lpc(it);
+        t_period(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
     printf("unit: %d checks, %d mismatches\n", cases, fails);

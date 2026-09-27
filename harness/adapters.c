@@ -4,6 +4,7 @@
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
+#include "codec.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -98,4 +99,21 @@ void hk_fft_inverse_real(Emu *e, X86 *c) {
 void hk_lpc_from_lsf(Emu *e, X86 *c) {
     int order = AI(2);
     lpc_from_lsf(PTR(float, A(0), order), PTR(float, A(1), order + 1), order, AI(3));
+}
+
+void hk_dsp_fit_period(Emu *e, X86 *c) {
+    int srcn = AI(1), dstn = AI(3), winn = AI(5);
+    dsp_fit_period(PTR(float, A(0), MAX(srcn, 1)), srcn, PTR(float, A(2), MAX(dstn, 1)), dstn,
+                   PTR(float, A(4), MAX(winn + 1, 1)), winn);
+}
+void hk_dsp_period(Emu *e, X86 *c) {
+    int srcn = AI(1), dstn = AI(3), winn = AI(7);
+    dsp_period(PTR(float, A(0), MAX(MAX(srcn, dstn), 1)), srcn, PTR(float, A(2), MAX(dstn, 1)), dstn, argf(c, 4),
+               AI(5), PTR(float, A(6), MAX(winn + 1, 1)), winn);
+}
+void hk_codec_bytes_to_floats(Emu *e, X86 *c) {
+    int n = AI(1);
+    // the escapes make the byte extent data dependent: check the start, then walk
+    const int8_t *p = (const int8_t *)x86_ptr(c, A(0), 1);
+    E_RET(codec_bytes_to_floats(p, n, PTR(float, A(2), n), AI(3)));
 }
