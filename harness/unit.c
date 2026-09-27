@@ -19,6 +19,7 @@
 #include "fe_lex.h"
 #include "fe_word.h"
 #include "fe_phrase.h"
+#include "fe_text.h"
 #include "../port/lexdump.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -1711,10 +1712,18 @@ static void t_phrase(int iter) {
         memcpy(w0, w, 0xb600); memcpy(d0, gp(gaddr(dbase), dsize), dsize);
         uint32_t a[3] = { (uint32_t)lo, (uint32_t)hi, flag };
         if (f == 3) { a[0] = go; a[1] = (uint32_t)lo; a[2] = (uint32_t)hi; }
+        X86State st = C->s;
         emu_set_insn_budget(E, 50000000);
         call(fs[f].fn, 3, a);
         emu_set_insn_budget(E, 0);
-        if (E->failed) { fprintf(stderr, "phrase case %d fn %d: %s\n", iter, f, emu_error(E)); exit(1); }
+        if (E->failed) {
+            // random word objects can divide by zero in the original (a zero-length segment): skip them
+            if (!strstr(emu_error(E), "divide")) { fprintf(stderr, "phrase case %d fn %d: %s\n", iter, f, emu_error(E)); exit(1); }
+            C->s = st; C->faulted = 0; E->failed = 0; emu_clear_abort(E);
+            memcpy(w, w0, 0xb600); memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+            free(w0); free(d0); skipped++;
+            break;
+        }
         uint8_t *w1 = malloc(0xb600), *d1 = malloc(dsize);
         memcpy(w1, w, 0xb600); memcpy(d1, gp(gaddr(dbase), dsize), dsize);
         memcpy(w, w0, 0xb600); memcpy(gp(gaddr(dbase), dsize), d0, dsize);
@@ -1732,6 +1741,51 @@ static void t_phrase(int iter) {
         free(w0); free(d0); free(w1); free(d1);
     }
     emu_free(E, go);
+}
+
+// the text rewriting before tokenising, on texts built from the cases it handles
+static int txt_changed;
+static void t_text(int iter) {
+    static const char *pieces[] = { "hello", "world", ":-)", ";-)", ":(", ":)", "8)", "e-mail", "joe@example.com",
+        "www.microsoft.com", "mit.edu", "http://a.b/c", "<joe@x.org>", "1999", "1234", "12345", "2001", "a+b", "c++",
+        "~5", "~", "\"&\"", "\"?\"", "\"a\"", "\xe9t\xe9", "\x93quoted\x94", "\x91it\x92s", "*bold*", "**", "snake_case",
+        "back\\slash", "a.b.c", "x.y", "one. two", "3.14", "e.g.", "U.S.A.", "a-b", "k:v", "(x)", "\xa0", "\xab" "q" "\xbb",
+        "\x1b\\Spd=200\\", "\x1bP", ("\x1b" "Z") };
+    char text[400];
+    int n = 0, np = rndi(1, 8);
+    for (int k = 0; k < np && n < 300; k++) {
+        const char *pc = pieces[rnd() % (sizeof pieces / sizeof pieces[0])];
+        if (rnd() & 1) { memcpy(text + n, "\x1bQ ", 3); n += 3; }     // (records: one text part per escape)
+        size_t l = strlen(pc);
+        memcpy(text + n, pc, l); n += (int)l;
+        text[n++] = (pc[0] == 0x1b || rnd() % 4) ? ' ' : (rnd() & 1) ? '\r' : ',';   // (an escape runs to a space)
+    }
+    text[n] = 0;
+    uint32_t gt = galloc(512), gout = galloc(4);
+    strcpy(gp(gt, 512), text);
+    wr32(C, gout, 0);
+    int32_t spell = (iter % 5 == 0);
+    HeapSnap h0; heap_snap(&h0);
+    uint32_t a[3] = { gt, gout, (uint32_t)spell };
+    uint32_t r1 = call(0x6368337f, 3, a);
+    uint32_t o1 = rd32(C, gout);
+    char s1[2048] = ""; if (o1) snprintf(s1, sizeof s1, "%s", (char *)gp(o1, 1));
+    char t1[512]; memcpy(t1, gp(gt, 512), 512);
+    HeapSnap h1; heap_snap(&h1);
+    heap_restore(&h0);
+    strcpy(gp(gt, 512), text);
+    wr32(C, gout, 0);
+    uint32_t r2 = (uint32_t)txt_rewrite(gp(gt, 512), gp(gout, 4), spell);
+    uint32_t o2 = rd32(C, gout);
+    char s2[2048] = ""; if (o2) snprintf(s2, sizeof s2, "%s", (char *)gp(o2, 1));
+    check("txt_rewrite", iter, "EAX", &r1, &r2, 4);
+    check("txt_rewrite", iter, "out", &o1, &o2, 4);
+    if (strcmp(s1, s2) && getenv("VDBG")) fprintf(stderr, "  in  [%s]\n  orig[%s]\n  C   [%s]\n", text, s1, s2);
+    check("txt_rewrite", iter, "text", s1, s2, strlen(s1) + 1);
+    check("txt_rewrite", iter, "input", t1, gp(gt, 512), 512);
+    heap_check("txt_rewrite", iter, &h1);
+    txt_changed += o1 != 0;
+    free(h0.mem); free(h1.mem);
 }
 
 int main(int argc, char **argv) {
@@ -1797,12 +1851,13 @@ int main(int argc, char **argv) {
         t_word(it);
         if (it < 300) t_evplace(it);
         if (it < 600) t_phrase(it);
+        t_text(it);
         if (it < 600) t_main(it);
         if (it < 900) t_proc(it);
         if (it < 500) t_viterbi(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
-    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found);
+    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed);
     return fails ? 1 : 0;
 }

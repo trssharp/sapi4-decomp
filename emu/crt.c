@@ -61,11 +61,7 @@ static void h_strpbrk(Emu *e, X86 *c) { const char *s = S(A(0)); const char *p =
 static void h_strspn(Emu *e, X86 *c) { E_RET(strspn(S(A(0)), S(A(1)))); }
 static void h_strcspn(Emu *e, X86 *c) { E_RET(strcspn(S(A(0)), S(A(1)))); }
 static void h_strupr(Emu *e, X86 *c) { char *s = (char *)S(A(0)); for (; *s; s++) *s = (char)vc_toupper((uint8_t)*s); E_RET(A(0)); }
-static void h_strrev(Emu *e, X86 *c) {
-    char *s = (char *)S(A(0)); size_t n = strlen(s);
-    for (size_t i = 0; i < n / 2; i++) { char t = s[i]; s[i] = s[n - 1 - i]; s[n - 1 - i] = t; }
-    E_RET(A(0));
-}
+static void h_strrev(Emu *e, X86 *c) { vc_strrev((char *)S(A(0))); E_RET(A(0)); }
 static void h_strtok(Emu *e, X86 *c) {
     uint32_t s = A(0);
     const char *delim = S(A(1));
@@ -85,7 +81,7 @@ static void h_toupper(Emu *e, X86 *c) { (void)e; int ch = (int)A(0); E_RET((ch >
 static void h_isalpha(Emu *e, X86 *c) { (void)e; E_RET(vc_ctype((int)A(0)) & (_UPPER | _LOWER | _ALPHA_BIT)); }
 static void h_isdigit(Emu *e, X86 *c) { (void)e; E_RET(vc_ctype((int)A(0)) & _DIGIT); }
 static void h_isctype(Emu *e, X86 *c) { (void)e; E_RET(vc_ctype((int)A(0)) & A(1)); }
-static void h_atoi(Emu *e, X86 *c) { E_RET((uint32_t)(int32_t)strtol(S(A(0)), NULL, 10)); }
+static void h_atoi(Emu *e, X86 *c) { E_RET((uint32_t)vc_atoi(S(A(0)))); }
 static void h_atof(Emu *e, X86 *c) { x86_fpu_push(c, strtod(S(A(0)), NULL)); }
 static void h_abs(Emu *e, X86 *c) { (void)e; int32_t v = (int32_t)A(0); E_RET(v < 0 ? -(uint32_t)v : (uint32_t)v); }
 static void h_itoa(Emu *e, X86 *c) {

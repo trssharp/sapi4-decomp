@@ -5,6 +5,7 @@
 #include "fe_word.h"
 #include "fe_phrase.h"
 #include "fe_output.h"
+#include "fe_text.h"
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -519,3 +520,33 @@ void hk_fe_event_count(Emu *e, X86 *c) { E_RET((uint32_t)fe_event_count(A(0) ? G
 void hk_fe_word_event_count(Emu *e, X86 *c) { E_RET((uint32_t)fe_word_event_count(AI(0))); }
 void hk_fe_events(Emu *e, X86 *c) { E_RET((uint32_t)fe_events(A(0) ? GPH(uint8_t, A(0), 0xb600) : NULL, GPH(int32_t, A(1), 4))); }
 void hk_fe_word_events(Emu *e, X86 *c) { E_RET((uint32_t)fe_word_events(AI(0), GPH(int32_t, A(1), 4))); }
+#define GSTR(a) GPH(char, a, 1)
+void hk_txt_is_alpha(Emu *e, X86 *c) { E_RET((uint32_t)txt_is_alpha((char)A(0))); }
+void hk_txt_approx(Emu *e, X86 *c) { E_RET((uint32_t)txt_approx((char)A(0), GSTR(A(1)))); }
+void hk_txt_split(Emu *e, X86 *c) {
+    char *r = GP(char, *GPH(uint32_t, A(3), 4));
+    uint32_t v = (uint32_t)txt_split(GSTR(A(0)), GSTR(A(1)), GSTR(A(2)), &r);
+    *GPH(uint32_t, A(3), 4) = (uint32_t)(r - (char *)decomp_guest_mem);
+    E_RET(v);
+}
+void hk_txt_email_part(Emu *e, X86 *c) { txt_email_part(GSTR(A(0)), GSTR(A(1)), GSTR(A(2))); E_RET(c->s.r[EAX]); }
+void hk_txt_emoticon(Emu *e, X86 *c) { E_RET((uint32_t)txt_emoticon(GPH(uint8_t, A(0), 0xc9))); }
+void hk_txt_tilde(Emu *e, X86 *c) { E_RET((uint32_t)txt_tilde(GPH(uint8_t, A(0), 0xc9))); }
+void hk_txt_normalize(Emu *e, X86 *c) { E_RET((uint32_t)txt_normalize(GPH(uint8_t, A(0), 0xc9))); }
+void hk_txt_email(Emu *e, X86 *c) { E_RET((uint32_t)txt_email(GPH(uint8_t, A(0), 0xc9))); }
+void hk_txt_thousands(Emu *e, X86 *c) { E_RET((uint32_t)txt_thousands(GPH(uint8_t, A(0), 0xc9))); }
+void hk_txt_plus(Emu *e, X86 *c) { E_RET((uint32_t)txt_plus(GPH(uint8_t, A(0), 0xc9))); }
+void hk_txt_tags(Emu *e, X86 *c) {
+    char *p = GP(char, *GPH(uint32_t, A(0), 4));
+    uint32_t v = (uint32_t)txt_tags(&p, GPH(uint8_t, A(1), 0xc9), AI(2));
+    *GPH(uint32_t, A(0), 4) = (uint32_t)(p - (char *)decomp_guest_mem);
+    E_RET(v);
+}
+void hk_txt_words(Emu *e, X86 *c) {
+    char *p = GP(char, *GPH(uint32_t, A(0), 4));
+    uint32_t v = (uint32_t)txt_words(&p, GPH(uint8_t, A(1), 0xc9), AI(2));
+    *GPH(uint32_t, A(0), 4) = (uint32_t)(p - (char *)decomp_guest_mem);
+    E_RET(v);
+}
+void hk_txt_rules(Emu *e, X86 *c) { E_RET((uint32_t)txt_rules(GPH(uint8_t, A(0), 0xc9), AI(1), AI(2))); }
+void hk_txt_rewrite(Emu *e, X86 *c) { E_RET((uint32_t)txt_rewrite(GSTR(A(0)), GPH(uint32_t, A(1), 4), AI(2))); }

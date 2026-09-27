@@ -3,6 +3,7 @@
 // emulator with these definitions is bit-exact against the genuine engine on the tetyys references.)
 #include "vcrt.h"
 #include <string.h>
+#include <stdlib.h>
 
 // ------------------------------------------------------------------ CP1252
 const uint16_t cp1252_to_uni[256] = {
@@ -76,6 +77,12 @@ int vc_strncmp(const char *a, const char *b, size_t n) { return sgn(strncmp(a, b
 int vc_stricmp(const char *a, const char *b) { return sgn(vc_stricmp_n(a, b, (size_t)-1)); }
 int vc_strnicmp(const char *a, const char *b, size_t n) { return sgn(vc_stricmp_n(a, b, n)); }
 int vc_memcmp(const void *a, const void *b, size_t n) { int r = n ? memcmp(a, b, n) : 0; return r < 0 ? -1 : r > 0; }
+char *vc_strrev(char *s) {
+    size_t n = strlen(s);
+    for (size_t i = 0; i < n / 2; i++) { char t = s[i]; s[i] = s[n - 1 - i]; s[n - 1 - i] = t; }
+    return s;
+}
+int32_t vc_atoi(const char *s) { return (int32_t)strtol(s, NULL, 10); }
 
 // Approximation of the Win32 "word sort" used by CompareStringA/lstrcmp(i)A: hyphen and apostrophe
 // are ignored on the first pass; case differences only break ties (lowercase first).

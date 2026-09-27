@@ -30,6 +30,8 @@ int vc_stricmp(const char *a, const char *b);
 int vc_strnicmp(const char *a, const char *b, size_t n);
 int vc_stricmp_n(const char *a, const char *b, size_t n);   // raw difference, used by the above
 int vc_memcmp(const void *a, const void *b, size_t n);
+char *vc_strrev(char *s);           // _strrev
+int32_t vc_atoi(const char *s);     // atoi as the emulator's MSVCRT (strtol, base 10, to 32 bits)
 
 // Windows code page 1252 and USER32's character functions over it
 extern const uint16_t cp1252_to_uni[256];
