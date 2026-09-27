@@ -435,3 +435,69 @@ end:
     R = GP(UnitRec, u->recs);
     if (u->sil_phone == R[n - 1].phone) u->last_c = -1.0f;
 }
+
+LAYOUT(UnitStage, notify_msg, 0x26c);
+LAYOUT(UnitStage, fast_rate, 0x27c);
+LAYOUT(UnitStage, alt_rate, 0x2c4);
+
+static void fitted_scale(UnitStage *u, uint32_t base) {
+    double x = (double)(uint32_t)(u->fast_rate - base) / ((double)u->fast_rate - 20.0) - -1.5;
+    u->dur_scale = (float)x;
+    if (!x87_jbe(x, 2.5)) u->dur_scale = 2.5f;
+}
+static double sil_from(const UnitStage *u) {
+    return (1.0 / (double)u->rate - (double)u->dur_scale / (double)u->default_rate) * 55.0;
+}
+
+void unit_rate_update(UnitStage *u) {
+    u->final_sil = u->fast_rate >= u->rate;
+    if (u->rate_mode == 0) {
+        if (!u->final_sil) {
+            u->dur_scale = (float)((double)u->default_rate / (double)(int32_t)u->rate);
+            u->sil_dur = 0.0f;
+        } else {
+            fitted_scale(u, u->rate);
+            u->sil_dur = (float)sil_from(u);
+        }
+    } else if (!(u->rate_flags & 2)) {
+        u->final_sil = 0;
+        u->dur_scale = 1.0f;
+        u->sil_dur = 0.0f;
+    } else if (!u->final_sil) {
+        u->dur_scale = (float)((double)u->alt_rate / (double)(int32_t)u->rate);
+        u->sil_dur = 0.0f;
+    } else {
+        fitted_scale(u, u->alt_rate);
+        double sd = sil_from(u);
+        u->sil_dur = (float)sd;
+        if (!x87_jae(sd, 0.0)) u->sil_dur = 0.0f;
+    }
+}
+
+int32_t unit_set_rate(UnitStage *u, uint32_t r) {
+    if (r == 0xffffffffu) {
+        u->rate = (uint32_t)x87_ftol((double)u->default_rate * 3.0);
+    } else if (r == 0) {
+        u->rate = 30;
+    } else {
+        uint32_t m = (uint32_t)x87_ftol((double)u->default_rate * 3.0);
+        if (r > m || r < 30) return (int32_t)0x8000ffff;
+        u->rate = r;
+    }
+    vc_PostMessageA(u->notify_hwnd, u->notify_msg, 2, 0);
+    unit_rate_update(u);
+    return 0;
+}
+
+int32_t unit_reset_rate(UnitStage *u) {
+    u->rate = u->default_rate;
+    vc_PostMessageA(u->notify_hwnd, u->notify_msg, 2, 0);
+    unit_rate_update(u);
+    return 0;
+}
+
+int32_t unit_set_amp(UnitStage *u, uint32_t v) {
+    u->amp = v & 0xffff;
+    vc_PostMessageA(u->notify_hwnd, u->notify_msg, 3, 0);
+    return 0;
+}

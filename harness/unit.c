@@ -605,6 +605,43 @@ static void t_tapes(int iter) {
     memcpy(key, skey, 16);
 }
 
+// the rate routines on random settings (unit_set_rate / reset / amp post a message: compared too,
+// through the posted-message queue)
+static void t_rate(int iter) {
+    uint32_t gu = galloc(sizeof(UnitStage));
+    UnitStage *u = gp(gu, sizeof *u);
+    memset(u, 0, sizeof *u);
+    u->default_rate = (uint32_t)rndi(80, 250);
+    u->fast_rate = (uint32_t)rndi(0, 400);
+    u->rate = (uint32_t)rndi(0, 600);
+    u->alt_rate = (uint32_t)rndi(50, 300);
+    u->rate_mode = rndi(0, 1);
+    u->rate_flags = rnd() & 3;
+    u->dur_scale = (float)rndi(1, 9);
+    int which = rndi(0, 3);
+    uint32_t arg = (rnd() % 4 == 0) ? 0xffffffffu : (rnd() % 4 == 0) ? 0 : (uint32_t)rndi(1, 800);
+    reg_add(gu, sizeof(UnitStage));
+    int nq = E->gq.n;
+    uint32_t r1 = 0, r2 = 0, a[1] = { arg };
+    static const uint32_t fn[4] = { 0x63687e26, 0x63687d4b, 0x63687de5, 0x63687fbb };
+    r1 = thiscall(fn[which], gu, which == 1 || which == 3 ? 1 : 0, a);
+    int posted1 = E->gq.n - nq;
+    reg_save();
+    int nq2 = E->gq.n;
+    UnitStage *h = gp(gu, sizeof *u);
+    switch (which) {
+    case 0: unit_rate_update(h); r2 = r1; break;
+    case 1: r2 = (uint32_t)unit_set_rate(h, arg); break;
+    case 2: r2 = (uint32_t)unit_reset_rate(h); break;
+    default: r2 = (uint32_t)unit_set_amp(h, arg); break;
+    }
+    int posted2 = E->gq.n - nq2;
+    check("unit_rate", iter, "EAX", &r1, &r2, 4);
+    check("unit_rate", iter, "messages posted", &posted1, &posted2, sizeof posted1);
+    reg_check("unit_rate", iter);
+    E->gq.n = nq;   // drop the test's messages
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -631,6 +668,7 @@ int main(int argc, char **argv) {
         t_senone(it);
         t_prosody(it);
         t_tapes(it);
+        t_rate(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }

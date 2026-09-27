@@ -48,7 +48,11 @@ typedef struct UnitStage {
     GPTR(int16_t) ids;         // 0x260 phone index per unit
     GPTR(int16_t) senones;     // 0x264 senone per unit
     int32_t cap;               // 0x268 capacity of the three arrays
-    uint8_t _26c[0x280 - 0x26c];
+    uint32_t notify_msg;       // 0x26c window message for notifications
+    uint32_t notify_hwnd;      // 0x270
+    uint32_t rate;             // 0x274 speaking rate (wpm)
+    uint32_t default_rate;     // 0x278
+    uint32_t fast_rate;        // 0x27c at or below this rate: final silences and the fitted scale
     float dur_scale;           // 0x280
     float sil_dur;             // 0x284
     int32_t final_sil;         // 0x288 append a silence unit when the next phrase does not start with one
@@ -62,7 +66,20 @@ typedef struct UnitStage {
     uint8_t _2a4[0x2b4 - 0x2a4];
     int32_t last_b;            // 0x2b4 last b[] value carried across phrases (-1: none)
     float last_c;              // 0x2b8 the same for c[] (-1: none)
+    uint32_t rate_flags;       // 0x2bc bit 1: scale by the alternative default rate
+    int32_t rate_mode;         // 0x2c0 0: default rate; otherwise see rate_flags
+    uint32_t alt_rate;         // 0x2c4
 } UnitStage;
+
+// @0x63687e26 thiscall: derive dur_scale / sil_dur / final_sil from the rate
+void unit_rate_update(UnitStage *u);
+// @0x63687d4b thiscall: set the rate (-1: 3 x default, 0: 30; otherwise 30..3 x default, else
+// E_UNEXPECTED), notify (message wparam 2) and update
+int32_t unit_set_rate(UnitStage *u, uint32_t r);
+// @0x63687de5 thiscall: back to the default rate
+int32_t unit_reset_rate(UnitStage *u);
+// @0x63687fbb thiscall: set the output scale (low 16 bits), notify (wparam 3)
+int32_t unit_set_amp(UnitStage *u, uint32_t v);
 
 // the query of the older tree interface (0x6367233c, not decompiled; never reached by the corpus)
 typedef struct TreeQuery {

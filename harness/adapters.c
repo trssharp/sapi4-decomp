@@ -296,3 +296,8 @@ void hk_queue_pop(Emu *e, X86 *c) { E_RET(queue_pop(Q, A(0) ? GPH(QItem, A(0), 2
 void hk_locked_get_58(Emu *e, X86 *c) { E_RET(locked_get_58(GPH(uint8_t, c->s.r[ECX], 0x70))); }
 void hk_locked_get_11c(Emu *e, X86 *c) { E_RET(locked_get_11c(GPH(uint8_t, c->s.r[ECX], 0x134))); }
 void hk_locked_get_2cc(Emu *e, X86 *c) { E_RET(locked_get_2cc(GPH(uint8_t, c->s.r[ECX], 0x2e4))); }
+
+void hk_unit_rate_update(Emu *e, X86 *c) { unit_rate_update(THIS(UnitStage)); }
+void hk_unit_set_rate(Emu *e, X86 *c) { E_RET(unit_set_rate(THIS(UnitStage), A(0))); }
+void hk_unit_reset_rate(Emu *e, X86 *c) { E_RET(unit_reset_rate(THIS(UnitStage))); }
+void hk_unit_set_amp(Emu *e, X86 *c) { E_RET(unit_set_amp(THIS(UnitStage), A(0))); }
