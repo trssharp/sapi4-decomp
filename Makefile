@@ -112,3 +112,8 @@ build/port_render: port/render.c port/dllimage.c port/dllimage.h $(PORTALL) $(wi
 port-render-check: build/port_render
 	@./tools/port_render_check.sh
 .PHONY: port-render-check
+build/port_render_baked: port/render.c port/dllimage.c port/dllimage.h build/dlldata_gen.c $(PORTALL) $(wildcard src/*.h)
+	$(PORTCC) -O1 -DDLL_BAKED -o $@ port/render.c port/dllimage.c build/dlldata_gen.c $(PORTALL) -lm
+port-render-baked-check: build/port_render_baked
+	@./tools/port_render_check.sh build/port_render_baked
+.PHONY: port-render-baked-check
