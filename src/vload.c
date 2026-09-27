@@ -160,3 +160,23 @@ int32_t unit_init(UnitStage *u, uint8_t *qin, uint8_t *qout, void *stg, const ui
     if (variant < 0) unit_voice_scan(u, voice_idx, -variant);
     return 1;
 }
+
+UnitStage *unit_ctor(UnitStage *u) {
+    u->out = 0;
+    u->in = 0;
+    u->_000 = 0;
+    u->lattice = 0;
+    u->phone_names = 0;
+    u->tree = 0;
+    u->rate_mode = 0;
+    memset(u->cs, 0, sizeof u->cs);
+    memset(u->stats, 0, sizeof u->stats);
+    vc_InitializeCriticalSection(u->cs);
+    u->ev_stop = vc_CreateEventA(1, 0);
+    u->ev_done = vc_CreateEventA(1, 0);
+    u->cap = 10;
+    GPSET(u->recs, (UnitRec *)vc_malloc(0x2f8));
+    GPSET(u->ids, (int16_t *)vc_malloc((size_t)(uint32_t)u->cap * 2));
+    GPSET(u->senones, (int16_t *)vc_malloc((size_t)(uint32_t)u->cap * 2));
+    return u;
+}

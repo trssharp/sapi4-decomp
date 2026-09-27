@@ -17,7 +17,7 @@ typedef struct Queue {
     uint32_t cap_bytes;     // 0x04
     GPTR(QItem) items;      // 0x08
     int32_t full;           // 0x0c set at the high-water mark, cleared at a quarter of it
-    int32_t _10;
+    GPTR(const char) name;  // 0x10 for debugging (the original never reads it)
     uint32_t high;          // 0x14 high-water mark
     uint8_t cs[24];         // 0x18 CRITICAL_SECTION
     uint32_t ev_nonempty;   // 0x30
@@ -38,3 +38,9 @@ int queue_pop(Queue *q, QItem *out);                    // @0x63684aa1 thiscall
 uint32_t locked_get_58(void *obj);                      // @0x6368447a thiscall
 uint32_t locked_get_11c(void *obj);                     // @0x6368225f thiscall
 uint32_t locked_get_2cc(void *obj);                     // @0x63687cfd thiscall
+// @0x636847ce thiscall: an empty queue, no high-water mark (-1), four manual-reset events, all clear
+Queue *queue_ctor(Queue *q);
+// @0x6368488f thiscall: set the name
+void queue_set_name(Queue *q, const char *name);
+// @0x63684967 thiscall: set the high-water mark and the events that depend on it (locked)
+void queue_set_high(Queue *q, uint32_t high);

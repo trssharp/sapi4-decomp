@@ -107,3 +107,28 @@ static uint32_t locked_get(void *obj, uint32_t cs_off) {
 uint32_t locked_get_58(void *obj) { return locked_get(obj, 0x58); }
 uint32_t locked_get_11c(void *obj) { return locked_get(obj, 0x11c); }
 uint32_t locked_get_2cc(void *obj) { return locked_get(obj, 0x2cc); }
+
+Queue *queue_ctor(Queue *q) {
+    q->high = 0xffffffffu;
+    q->count = 0;
+    q->items = 0;
+    q->cap_bytes = 0;
+    q->full = 0;
+    GPSET(q->name, DLLVAR(const char, 0x63721b64));
+    memset(q->cs, 0, sizeof q->cs);
+    vc_InitializeCriticalSection(q->cs);
+    q->ev_nonempty = vc_CreateEventA(1, 0);
+    q->ev_full = vc_CreateEventA(1, 0);
+    q->ev_empty = vc_CreateEventA(1, 0);
+    q->ev_room = vc_CreateEventA(1, 0);
+    return q;
+}
+
+void queue_set_name(Queue *q, const char *name) { GPSET(q->name, name); }
+
+void queue_set_high(Queue *q, uint32_t high) {
+    vc_EnterCriticalSection(q->cs);
+    q->high = high;
+    queue_update_events(q);
+    vc_LeaveCriticalSection(q->cs);
+}

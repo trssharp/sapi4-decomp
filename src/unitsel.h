@@ -174,3 +174,6 @@ int unit_prosody(UnitStage *u, const PhoneIn *ph, int n, int32_t *last, int next
 // @0x63687751 thiscall: look up the phone index and the senone of every phone of a phrase. ph: n names
 // of 100 bytes; "\..." (tags) and "#..." (boundaries) are not phones, they mark word edges.
 void unit_select(UnitStage *u, const char *ph, int n);
+// @0x636851da thiscall: constructor: no voice, no statistics, a lock, the stop and done events,
+// room for 10 units
+UnitStage *unit_ctor(UnitStage *u);

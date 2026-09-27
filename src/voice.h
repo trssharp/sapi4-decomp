@@ -111,18 +111,20 @@ typedef struct VocEngine {
     uint32_t msg;           // 0x10 notification message
     int32_t chunks;         // 0x14 chunks sent since the queue was last empty
     uint32_t hwnd;          // 0x18
-    uint8_t _1c[4];
+    uint8_t _1c[4];         // (an empty object; its constructor returns itself)
     int32_t effect;         // 0x20 index of the last unit's name in the phone table (-1: none)
     VocSynthState st;       // 0x24
     uint32_t thread;        // 0x60 the synthesis thread (SetThreadPriority)
     uint8_t _64[0x94 - 0x64];
     uint32_t resample[4];   // 0x94, 0x98, 0x9c, 0xa0 optional sample-rate converters (C++ objects)
-    uint8_t _a4[0xbc - 0xa4];
+    int32_t _a4, _a8, _ac;
+    int32_t _b0;            // 0xb0 -1
+    int32_t _b4, _b8;
     int32_t mode;           // 0xbc index into the engine's mode table
     int32_t style;          // 0xc0 < 0: the character (\Chr\) to re-apply after a reset
     uint32_t prio[7][3];    // 0xc4 thread priorities per level (low, high, ...)
-    uint32_t level;         // 0x118
-    uint8_t _11c[0x134 - 0x11c];
+    uint32_t level;         // 0x118 current row of prio
+    uint8_t cs[24];         // 0x11c CRITICAL_SECTION guarding `_00` (the abort flag)
     uint32_t ev_stop;       // 0x134
     uint32_t ev_done;       // 0x138
     GPTR(struct Queue) in;  // 0x13c
@@ -189,3 +191,10 @@ int32_t voc_engine_init(VocEngine *v, uint8_t *qin, uint8_t *qout, int32_t mode,
 // the sample-rate converters' constructors (C++; not decompiled, never reached by the corpus).
 // by resample[] slot: 0 22050 -> 8000, 1 22050 -> 16000, 2 11025 -> 8000, 3 8000 -> 11025
 uint32_t voc_resampler_new(int slot);
+// @0x63671000 thiscall: the synthesizer object's constructor (no voice, no buffers)
+VocSynthState *voc_state_ctor(VocSynthState *s);
+// @0x63674cd8 thiscall: an empty object's constructor (returns itself)
+void *empty_ctor(void *self);
+// @0x63681401 thiscall: the synthesis thread object's constructor: no converters, a lock, the stop and
+// done events, the current thread's handle, the table of thread priorities per level (level 3)
+VocEngine *voc_engine_ctor(VocEngine *v);

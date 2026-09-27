@@ -818,3 +818,10 @@ void hk_mode_table_add(Emu *e, X86 *c) {
     E_RET((uint32_t)mode_table_add(GPH(const VoiceHdr, A(0), 0x8f8), ML(1), ML(2), GPH(int32_t, A(3), 4), GPH(int32_t, A(4), 4),
                                    GPH(int32_t, A(5), 4)));
 }
+void hk_queue_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(queue_ctor(THIS(Queue)))); }
+void hk_queue_set_name(Emu *e, X86 *c) { queue_set_name(THIS(Queue), A(0) ? GPH(const char, A(0), 1) : NULL); }
+void hk_queue_set_high(Emu *e, X86 *c) { queue_set_high(THIS(Queue), A(0)); }
+void hk_unit_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(unit_ctor(THIS(UnitStage)))); }
+void hk_voc_state_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(voc_state_ctor(THIS(VocSynthState)))); }
+void hk_empty_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(empty_ctor(GPH(uint8_t, c->s.r[ECX], 1)))); }
+void hk_voc_engine_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(voc_engine_ctor(THIS(VocEngine)))); }

@@ -46,6 +46,8 @@ uint32_t vc_WaitForMultipleObjects(uint32_t n, const uint32_t *hs, int all, uint
 int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp);
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio);
 void vc_DebugBreak(void);
+// KERNEL32 GetCurrentThread (a pseudo handle)
+uint32_t vc_GetCurrentThread(void);
 // IUnknown::Release on a COM object handed over by the SAPI layer (hook build: the guest object)
 uint32_t vc_com_release(void *obj);
 // OLE32 CoCreateInstance with a CLSID and IID in the DLL's data (by preferred-base address); *out the

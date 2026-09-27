@@ -265,3 +265,42 @@ void voc_init(VocEngine *v, int32_t style) {
         }
     }
 }
+
+VocSynthState *voc_state_ctor(VocSynthState *s) {
+    s->mem = 0;
+    s->fmem = 0;
+    s->fcoef = 0;
+    s->voice = 0;
+    s->effect = 0;
+    s->last_lpc = 0;
+    return s;
+}
+
+void *empty_ctor(void *self) { return self; }
+
+LAYOUT(VocEngine, _b0, 0xb0);
+LAYOUT(VocEngine, cs, 0x11c);
+
+VocEngine *voc_engine_ctor(VocEngine *v) {
+    empty_ctor(v->_1c);
+    voc_state_ctor(&v->st);
+    v->_b0 = -1;
+    v->out = 0;
+    v->in = 0;
+    v->_00 = 0;
+    for (int k = 0; k < 4; k++) v->resample[k] = 0;
+    memset(v->cs, 0, sizeof v->cs);
+    vc_InitializeCriticalSection(v->cs);
+    v->ev_stop = vc_CreateEventA(1, 0);
+    v->ev_done = vc_CreateEventA(1, 0);
+    v->_a4 = v->_a8 = v->_ac = 0;
+    v->_b4 = v->_b8 = 0;
+    v->thread = vc_GetCurrentThread();
+    static const int32_t prio[7][3] = {
+        { -15, -1, 1 }, { -15, -1, 1 }, { -15, -1, 1 }, { -15, 0, 1 }, { -1, 0, 1 }, { 0, 0, 1 }, { 0, 0, 1 },
+    };
+    for (int i = 0; i < 7; i++)
+        for (int k = 0; k < 3; k++) v->prio[i][k] = (uint32_t)prio[i][k];
+    v->level = 3;
+    return v;
+}

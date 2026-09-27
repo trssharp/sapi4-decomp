@@ -93,6 +93,7 @@ uint32_t vc_WaitForSingleObject(uint32_t h, uint32_t ms) { return vc_WaitForMult
 int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) { (void)hwnd; (void)msg; (void)wp; (void)lp; return 1; }
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio) { (void)h; (void)prio; return 1; }
 void vc_DebugBreak(void) {}
+uint32_t vc_GetCurrentThread(void) { return 0xfffffffeu; }
 // storage objects of the portable build: a storage (a compound file's root) or a stream (its bytes)
 #include "cfb.h"
 #include <string.h>
