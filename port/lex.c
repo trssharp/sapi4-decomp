@@ -6,11 +6,20 @@
 #include "fe_vm.h"
 #include <stdlib.h>
 
+#ifdef DLL_BAKED
+extern const DllBlob dll_baked;
+#endif
+
 int main(int argc, char **argv) {
+#ifdef DLL_BAKED
+    (void)argc; (void)argv;
+    if (!dll_image_use(&dll_baked)) { fprintf(stderr, "cannot set up the image\n"); return 2; }
+#else
     if (argc < 2) { fprintf(stderr, "usage: port_lex <dir with msttssyn.dll> < words\n"); return 2; }
     char path[1024];
     snprintf(path, sizeof path, "%s/msttssyn.dll", argv[1]);
     if (!dll_image_load(path)) { fprintf(stderr, "cannot load %s\n", path); return 2; }
+#endif
     static uint8_t blk[0x5000];
     const RuleVM *vm = &rule_vm[2];
     char word[256];

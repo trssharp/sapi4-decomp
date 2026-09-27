@@ -70,3 +70,17 @@ port-lex-check: build/port_lex build/unit
 	@./build/port_lex data/msttsl < build/port_words.txt > build/port_lex_out.txt
 	@if cmp -s build/port_lex_ref.txt build/port_lex_out.txt; then echo "PORT-LEX: $$(wc -l < build/port_words.txt | tr -d ' ') words, $$(awk -F'\t' '$$2==1' build/port_lex_out.txt | wc -l | tr -d ' ') in the lexicon: portable output identical to the original"; else echo "PORT-LEX: DIFFERENT"; diff build/port_lex_ref.txt build/port_lex_out.txt | head; exit 1; fi
 .PHONY: port-lex-check
+
+# voice-baked variant: the DLL's data generated into build/dlldata_gen.c and compiled in
+PORTCC = $(CC) -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fno-builtin -Isrc -Iport
+build/mkimage: port/mkimage.c port/dllimage.c port/dllimage.h
+	@mkdir -p build
+	$(PORTCC) -o $@ port/mkimage.c port/dllimage.c
+build/dlldata_gen.c: build/mkimage data/msttsl/msttssyn.dll
+	./build/mkimage data/msttsl > $@
+build/port_lex_baked: port/lex.c port/dllimage.c port/dllimage.h port/lexdump.h build/dlldata_gen.c $(PORTC) $(wildcard src/*.h)
+	$(PORTCC) -O1 -DDLL_BAKED -o $@ port/lex.c port/dllimage.c build/dlldata_gen.c $(PORTC) -lm
+port-lex-baked-check: build/port_lex_baked port-lex-check
+	@./build/port_lex_baked < build/port_words.txt > build/port_lex_baked_out.txt
+	@if cmp -s build/port_lex_ref.txt build/port_lex_baked_out.txt; then echo "PORT-LEX (baked image): identical to the original"; else echo "PORT-LEX (baked): DIFFERENT"; exit 1; fi
+.PHONY: port-lex-baked-check
