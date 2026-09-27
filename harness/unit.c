@@ -14,6 +14,7 @@
 #include "senone.h"
 #include "unitsel.h"
 #include "fe_rules.h"
+#include "voice.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -699,6 +700,65 @@ static void t_viterbi(int iter) {
     check("array_lacks", iter, "EAX", &q1, &q2, 4);
 }
 
+// small unit-stage helpers the corpus never reaches
+static void t_misc(int iter) {
+    // intvec_append / vecarray_append: build the same structure twice, compare with heap
+    uint32_t ga = galloc(sizeof(VecArray));
+    memset(gp(ga, sizeof(VecArray)), 0, sizeof(VecArray));
+    C->s.r[ECX] = ga; call(0x636881ed, 0, NULL);
+    int stages = rndi(1, 5);
+    uint32_t ia[3] = { (uint32_t)stages, (uint32_t)rndi(0, 3), (uint32_t)rndi(-1, 3) };
+    thiscall(0x6368824c, ga, 3, ia);
+    HeapSnap h0; heap_snap(&h0);
+    uint32_t ops[20][2]; int nops = rndi(1, 20);
+    for (int k = 0; k < nops; k++) { ops[k][0] = (uint32_t)rndi(-1, stages - 1); /* (i == count passes the original's check and reads past the array) */ ops[k][1] = (uint32_t)rnd(); }
+    uint32_t rs1[20], rs2[20];
+    for (int k = 0; k < nops; k++) rs1[k] = thiscall(0x636882d6, ga, 2, ops[k]);
+    HeapSnap h1; heap_snap(&h1);
+    heap_restore(&h0);
+    for (int k = 0; k < nops; k++) rs2[k] = (uint32_t)vecarray_append(gp(ga, sizeof(VecArray)), (int32_t)ops[k][0], (int32_t)ops[k][1]);
+    check("vecarray_append", iter, "EAX", rs1, rs2, 4u * nops);
+    heap_check("vecarray_append", iter, &h1);
+    free(h0.mem); free(h1.mem);
+    uint32_t gv = rd32(C, ((VecArray *)gp(ga, sizeof(VecArray)))->items);
+    heap_snap(&h0);
+    uint32_t x = rnd();
+    uint32_t e1 = thiscall(0x636881b0, gv, 1, &x);
+    heap_snap(&h1); heap_restore(&h0);
+    uint32_t e2 = (uint32_t)intvec_append(gp(gv, sizeof(IntVec)), (int32_t)x);
+    check("intvec_append", iter, "EAX", &e1, &e2, 4);
+    heap_check("intvec_append", iter, &h1);
+    free(h0.mem); free(h1.mem);
+    // unit_span_lookup over a sorted table of entries
+    int ne = rndi(1, 6);
+    uint32_t gt = galloc(4u * (ne + 1));
+    int first = 0;
+    for (int k = 0; k <= ne; k++) {
+        uint32_t ge = galloc(0x2c);
+        memset(gp(ge, 0x2c), 0, 0x2c);
+        *(int32_t *)gp(ge, 4) = first;
+        uint32_t a20 = galloc(2 * 20), a24 = galloc(4 * 20), a28 = galloc(4 * 20);
+        for (int q = 0; q < 20; q++) { ((int16_t *)gp(a20, 40))[q] = (int16_t)rnd(); ((uint32_t *)gp(a24, 80))[q] = rnd(); ((uint32_t *)gp(a28, 80))[q] = rnd(); }
+        wr32(C, ge + 0x20, a20); wr32(C, ge + 0x24, a24); wr32(C, ge + 0x28, a28);
+        wr32(C, gt + 4u * k, ge);
+        first += rndi(1, 20);
+    }
+    int32_t xx = rndi(0, first - 1);
+    uint32_t go = galloc(8);
+    uint32_t sa[5] = { (uint32_t)xx, (uint32_t)(ne - 1), gt, go, go + 4 };
+    uint32_t s1 = call(0x63685d18, 5, sa);
+    int32_t o1[2]; memcpy(o1, gp(go, 8), 8);
+    int32_t o2[2];
+    int32_t last_first; memcpy(&last_first, gp(rd32(C, gt + 4u * (ne - 1)), 4), 4);
+    if (xx - last_first < 20) {   // (keep inside the entry's 20 values)
+        uint32_t s2 = (uint32_t)unit_span_lookup(xx, ne - 1, gp(gt, 4), &o2[0], &o2[1]);
+        check("unit_span_lookup", iter, "EAX", &s1, &s2, 4);
+        check("unit_span_lookup", iter, "outputs", o1, o2, 8);
+    }
+    uint32_t idv = rnd(), i1 = call(0x6367ddfb, 1, &idv), i2 = identity32(idv);
+    check("identity32", iter, "EAX", &i1, &i2, 4);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -726,6 +786,7 @@ int main(int argc, char **argv) {
         t_prosody(it);
         t_tapes(it);
         t_rate(it);
+        t_misc(it);
         if (it < 500) t_viterbi(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }

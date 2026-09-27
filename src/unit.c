@@ -373,21 +373,21 @@ void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n) {
         vc_free(it);
         return;
     }
-    it->v[0] = 0x1d;
-    it->v[1] = (uint32_t)v->effect;
+    it->code = 0x1d;
+    it->a.value = (uint32_t)v->effect;
     queue_push(GP(Queue, v->out), it);
     memset(it, 0, 0x14);
-    it->v[0] = 6;
+    it->code = 6;
     if (v->pcm16) {
         uint32_t bytes = (uint32_t)n * 2u;
         void *d = vc_malloc(bytes);
-        GPSET(it->v[3], d);
-        it->v[4] = bytes;
+        GPSET(it->data, d);
+        it->bytes = bytes;
         dsp_to_pcm16(d, GP(const float, pcm->data), n);
     } else {
         void *d = vc_malloc((size_t)(uint32_t)n);
-        GPSET(it->v[3], d);
-        it->v[4] = (uint32_t)n;
+        GPSET(it->data, d);
+        it->bytes = (uint32_t)n;
         dsp_to_pcm8(d, GP(const float, pcm->data), n);
     }
     if (queue_count(GP(Queue, v->out)) == 0) v->chunks = 0;
@@ -419,22 +419,22 @@ int32_t voc_thread_loop(VocEngine *v) {
         if (vc_WaitForMultipleObjects(2, wa, 0, 0xffffffffu) == 0) break;
         if (!queue_pop(GP(Queue, v->in), &it)) continue;
         if (queue_is_full(GP(Queue, v->out))) vc_PostMessageA(v->hwnd, v->msg, 0, 0);
-        switch (it.v[0]) {
+        switch (it.code) {
         case 0x14: {
             UnitOut *s = vc_malloc(0x50);
-            GPSET(it.v[3], s);
+            GPSET(it.data, (void *)s);
             memset(s, 0, 0x50);
             strcpy(s->name, "SIL");
-            s->dur = (float)((double)it.v[1] * (double)0.001f);
+            s->dur = (float)((double)it.a.value * (double)0.001f);
         }
             /* fall through */
         case 4:
             if (locked_get_11c(v) != 0) goto drop;
-            if (!it.v[3]) continue;
+            if (!it.data) continue;
             {
                 FloatBuf buf = { 0, 0 };
-                if (voc_synth_request(v, GP(const UnitOut, it.v[3]), &buf, &n) < 0) continue;
-                vc_free(GP(void, it.v[3]));
+                if (voc_synth_request(v, GP(const UnitOut, it.data), &buf, &n) < 0) continue;
+                vc_free(GP(void, it.data));
                 if (vc_WaitForMultipleObjects(2, wb, 0, 0xffffffffu) != 0) voc_send_audio(v, &buf, n);
                 vc_free(GP(void, buf.data));
             }
@@ -457,7 +457,7 @@ int32_t voc_thread_loop(VocEngine *v) {
             vc_SetThreadPriority(v->thread, (int32_t)v->prio[v->level][1]);
             continue;
         case 0xc: {
-            const char *chr = GP(const char, it.v[3]);
+            const char *chr = GP(const char, it.data);
             if (vc_stricmp(chr, "\"Normal\"") == 0) {
                 voc_init(v, 0);
                 if (v->style < 0) voc_init(v, -v->style);
@@ -470,12 +470,10 @@ int32_t voc_thread_loop(VocEngine *v) {
                 int wn = (int)strlen(t) + 1;
                 if (wn <= 100) vc_MultiByteToWideChar_cp1252((const uint8_t *)t, wn, w);
                 else memset(w, 0, sizeof w);   // (the original compares stale stack)
-                const uint8_t *modes = GP(const uint8_t, GP(const uint32_t, *DLLVAR(uint32_t, 0x63738bc0))[v->mode]);
-                int32_t cnt;
-                memcpy(&cnt, modes + 0x14, 4);
-                for (int32_t i = 1; i <= cnt; i++) {
-                    uint32_t mi = GP(const uint32_t, *(const uint32_t *)(const void *)(modes + 0x18))[i];
-                    if (vc_wcsicmp(w, GP(const uint16_t, identity32(mi) + 0x90c)) == 0) {
+                const ModeTable *mt = GP(const ModeTable, GP(GPTR(const ModeTable), *DLLVAR(GPTR(GPTR(const ModeTable)), 0x63738bc0))[v->mode]);
+                for (int32_t i = 1; i <= mt->count; i++) {
+                    const uint8_t *mi = GP(const uint8_t, GP(GPTR(const uint8_t), mt->modes)[i]);   // (through 0x6367ddfb, the identity)
+                    if (vc_wcsicmp(w, (const uint16_t *)(const void *)(mi + 0x90c)) == 0) {
                         voc_init(v, i);
                         break;
                     }
@@ -497,11 +495,11 @@ int32_t voc_thread_loop(VocEngine *v) {
             goto drop;
         }
     drop:
-        if (it.v[3]) vc_free(GP(void, it.v[3]));
+        if (it.data) vc_free(GP(void, it.data));
     }
     while (queue_pop(GP(Queue, v->in), &it)) {
-        if (it.v[0] == 9 && it.v[1]) vc_com_release(it.v[1]);
-        if (it.v[3]) vc_free(GP(void, it.v[3]));
+        if (it.code == 9 && it.a.obj) vc_com_release(GP(void, it.a.obj));
+        if (it.data) vc_free(GP(void, it.data));
     }
     vc_SetEvent(v->ev_done);
     return 0;

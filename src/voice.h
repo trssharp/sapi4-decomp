@@ -141,6 +141,8 @@ int32_t voc_synth_request(VocEngine *v, const struct UnitOut *u, FloatBuf *out, 
 void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n);
 // a sample-rate converter object's convert method (not decompiled; never reached by the corpus)
 int32_t voc_resample(uint32_t obj, uint32_t method, float *in, GPTR(float) *out, int32_t n);
+// the engine's table of voice modes (per mode: the mode descriptions; +0x90c of each is its name)
+typedef struct ModeTable { uint8_t _00[0x14]; int32_t count; GPTR(GPTR(const uint8_t)) modes; } ModeTable;
 // @0x636819e6 thiscall (not decompiled yet): (re)initialise the synthesizer for character `style`
 void voc_init(VocEngine *v, int32_t style);
 // @0x6367ddfb stdcall: returns its argument

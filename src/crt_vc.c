@@ -62,7 +62,7 @@ uint32_t vc_WaitForMultipleObjects(uint32_t n, const uint32_t *hs, int all, uint
 int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) { (void)hwnd; (void)msg; (void)wp; (void)lp; return 1; }
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio) { (void)h; (void)prio; return 1; }
 void vc_DebugBreak(void) {}
-uint32_t vc_com_release(uint32_t obj) { (void)obj; return 0; }
+uint32_t vc_com_release(void *obj) { (void)obj; return 0; }
 static _Thread_local uint32_t vc_seed = 1;
 int vc_rand(void) {
     vc_seed = vc_seed * 214013u + 2531011u;

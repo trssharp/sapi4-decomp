@@ -600,16 +600,16 @@ int32_t unit_thread_loop(UnitStage *u) {
     for (;;) {
         if (vc_WaitForMultipleObjects(2, u->wait_in, 0, 0xffffffffu) == 0) break;
         if (!queue_pop(GP(Queue, u->in), &it)) continue;
-        switch (it.v[0]) {
+        switch (it.code) {
         case 3:
             if (locked_get_2cc(u) == 0) {
-                if (!it.v[3]) continue;
-                unit_phrase(u, GP(PhoneIn, it.v[3]), (int32_t)(it.v[4] / 100u));
+                if (!it.data) continue;
+                unit_phrase(u, GP(PhoneIn, it.data), (int32_t)(it.bytes / 100u));
             }
-            if (it.v[3]) vc_free(GP(void, it.v[3]));
+            if (it.data) vc_free(GP(void, it.data));
             continue;
-        case 0x1a: unit_set_rate(u, it.v[1]); continue;
-        case 0x1c: unit_set_amp(u, it.v[1]); continue;
+        case 0x1a: unit_set_rate(u, it.a.value); continue;
+        case 0x1c: unit_set_amp(u, it.a.value); continue;
         case 0x19:
             unit_reset_rate(u);
             unit_set_amp(u, 0xffffffffu);
@@ -617,14 +617,14 @@ int32_t unit_thread_loop(UnitStage *u) {
         default: break;
         }
         if (vc_WaitForMultipleObjects(2, u->wait_out, 0, 0xffffffffu) == 0) {
-            if (it.v[3]) vc_free(GP(void, it.v[3]));
+            if (it.data) vc_free(GP(void, it.data));
             continue;
         }
         queue_push(GP(Queue, u->out), &it);
     }
     while (queue_pop(GP(Queue, u->in), &it)) {
-        if (it.v[0] == 9 && it.v[1]) vc_com_release(it.v[1]);
-        if (it.v[3]) vc_free(GP(void, it.v[3]));
+        if (it.code == 9 && it.a.obj) vc_com_release(GP(void, it.a.obj));
+        if (it.data) vc_free(GP(void, it.data));
     }
     vc_SetEvent(u->ev_done);
     return 0;

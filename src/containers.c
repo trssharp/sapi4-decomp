@@ -146,7 +146,7 @@ static double cost(uint32_t fn, int32_t a, int32_t b) {
 int32_t lattice_viterbi(VecArray *a, uint32_t fn) {
     if (fn) a->cost_fn = fn;
     int32_t ret = -1;
-    const GPTR(IntVec) *items = GP(GPTR(IntVec), a->items);
+    GPTR(IntVec) const *items = GP(GPTR(IntVec), a->items);
 #define ITEM(t) GP(IntVec, items[t])
     int32_t n0 = ITEM(0)->count, mx = n0 ? n0 : 1, total = mx;
     for (int32_t t = 1; t < a->count; t++) {

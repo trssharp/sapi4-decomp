@@ -44,7 +44,8 @@ int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) {
 }
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio) { uint32_t a[2] = { h, (uint32_t)prio }; return (int32_t)api(0x6369e03c, 2, a); }
 void vc_DebugBreak(void) { api(0x6369e084, 0, NULL); }
-uint32_t vc_com_release(uint32_t obj) {
+uint32_t vc_com_release(void *p) {
+    uint32_t obj = g(p);
     uint32_t vt = *(uint32_t *)(void *)(decomp_guest_mem + obj);
     uint32_t fn = *(uint32_t *)(void *)(decomp_guest_mem + vt + 8);
     return emu_call(decomp_emu, fn, 1, &obj);

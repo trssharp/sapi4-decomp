@@ -4,7 +4,14 @@
 #pragma once
 #include "gptr.h"
 
-typedef struct QItem { uint32_t v[5]; } QItem;
+// a queue record: what, a value or a COM object, one more word, a malloc'd payload and its size
+typedef struct QItem {
+    uint32_t code;          // 0x00
+    union { uint32_t value; GPTR(void) obj; } a;   // 0x04
+    uint32_t v2;            // 0x08
+    GPTR(void) data;        // 0x0c freed by whoever consumes the record
+    uint32_t bytes;         // 0x10
+} QItem;
 typedef struct Queue {
     uint32_t count;         // 0x00
     uint32_t cap_bytes;     // 0x04
