@@ -52,7 +52,9 @@ uint32_t vc_WaitForMultipleObjects(uint32_t n, const uint32_t *hs, int all, uint
 #ifndef DECOMP_HOOK
 // portable build: called when a thread would wait forever (nothing set, no timeout); a single-threaded
 // driver runs a stage's thread loop until then and leaves it from here (longjmp)
-extern void (*vc_idle_hook)(void);
+extern _Thread_local void (*vc_idle_hook)(void);
+// release an event (a portable build's engine teardown)
+void vc_event_close(uint32_t h);
 #endif
 int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp);
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio);

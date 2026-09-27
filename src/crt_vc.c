@@ -60,22 +60,26 @@ void vc_stack_pop(void *frame, uint32_t size, uint32_t below) { (void)size; free
 void vc_EnterCriticalSection(void *cs) { (void)cs; }
 void vc_LeaveCriticalSection(void *cs) { (void)cs; }
 // events of a single-threaded build: set / reset flags; a wait on nothing set times out (0x102)
-static struct { int used, manual, set; } vc_events[64];
+#define VC_NEVENTS 4096
+static struct { int used, manual, set; } vc_events[VC_NEVENTS];
 uint32_t vc_CreateEventA(int32_t manual, int32_t initial) {
-    for (uint32_t i = 1; i < 64; i++)
+    for (uint32_t i = 1; i < VC_NEVENTS; i++)
         if (!vc_events[i].used) {
             vc_events[i].used = 1;
             vc_events[i].manual = manual != 0;
             vc_events[i].set = initial != 0;
-            return 0x100 + i;
+            return 0x10000u + i;
         }
     return 0;
 }
+void vc_event_close(uint32_t h) {
+    if (h > 0x10000u && h < 0x10000u + VC_NEVENTS) vc_events[h - 0x10000u].used = 0;
+}
 void vc_InitializeCriticalSection(void *cs) { (void)cs; }
-static int vc_event(uint32_t h) { return h > 0x100 && h < 0x100 + 64 && vc_events[h - 0x100].used ? (int)(h - 0x100) : 0; }
+static int vc_event(uint32_t h) { return h > 0x10000u && h < 0x10000u + VC_NEVENTS && vc_events[h - 0x10000u].used ? (int)(h - 0x10000u) : 0; }
 int32_t vc_SetEvent(uint32_t h) { int i = vc_event(h); if (i) vc_events[i].set = 1; return i != 0; }
 int32_t vc_ResetEvent(uint32_t h) { int i = vc_event(h); if (i) vc_events[i].set = 0; return i != 0; }
-extern void (*vc_idle_hook)(void);
+extern _Thread_local void (*vc_idle_hook)(void);
 uint32_t vc_WaitForMultipleObjects(uint32_t n, const uint32_t *hs, int all, uint32_t ms) {
     (void)ms;
     if (all) {
@@ -93,7 +97,7 @@ uint32_t vc_WaitForMultipleObjects(uint32_t n, const uint32_t *hs, int all, uint
     if (ms == 0xffffffffu && vc_idle_hook) vc_idle_hook();
     return 0x102;       // (nothing else can set it: a wait would never end)
 }
-void (*vc_idle_hook)(void);
+_Thread_local void (*vc_idle_hook)(void);
 uint32_t vc_WaitForSingleObject(uint32_t h, uint32_t ms) { return vc_WaitForMultipleObjects(1, &h, 0, ms); }
 int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) { (void)hwnd; (void)msg; (void)wp; (void)lp; return 1; }
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio) { (void)h; (void)prio; return 1; }

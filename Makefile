@@ -106,14 +106,16 @@ port-fe-baked-check: build/port_fe_baked build/port_fe
 
 # text to speech with the C alone (voices, front end, unit stage, synthesizer), against the golden renders
 PORTALL = $(wildcard src/*.c)
-build/port_render: port/render.c port/dllimage.c port/dllimage.h $(PORTALL) $(wildcard src/*.h)
+LIBSRC = lib/sapi4tts.c lib/stubs.c port/dllimage.c $(PORTALL)
+LIBDEPS = $(LIBSRC) lib/sapi4tts.h port/dllimage.h $(wildcard src/*.h)
+build/port_render: port/render.c $(LIBDEPS)
 	@mkdir -p build
-	$(PORTCC) -o $@ port/render.c port/dllimage.c $(PORTALL) -lm
+	$(PORTCC) -Ilib -o $@ port/render.c $(LIBSRC) -lm -lpthread
 port-render-check: build/port_render
 	@./tools/port_render_check.sh
 .PHONY: port-render-check
-build/port_render_baked: port/render.c port/dllimage.c port/dllimage.h build/dlldata_gen.c $(PORTALL) $(wildcard src/*.h)
-	$(PORTCC) -O1 -DDLL_BAKED -o $@ port/render.c port/dllimage.c build/dlldata_gen.c $(PORTALL) -lm
+build/port_render_baked: port/render.c build/dlldata_gen.c $(LIBDEPS)
+	$(PORTCC) -Ilib -O1 -DS4_DLL_BAKED -o $@ port/render.c build/dlldata_gen.c $(LIBSRC) -lm -lpthread
 port-render-baked-check: build/port_render_baked
 	@./tools/port_render_check.sh build/port_render_baked
 .PHONY: port-render-baked-check
@@ -130,11 +132,48 @@ build/voicedata_gen.c: build/mkvoices $(wildcard data/msttsl/*.vce) $(wildcard d
 	./build/mkvoices data/msttsl > $@
 build/voicedata_gen.o: build/voicedata_gen.c src/crt_vc.h
 	$(PORTCC) -O0 -c -o $@ build/voicedata_gen.c
-build/port_render_full: port/render.c port/dllimage.c port/dllimage.h build/dlldata_gen.c build/voicedata_gen.o $(PORTALL) $(wildcard src/*.h)
-	$(PORTCC) -DDLL_BAKED -DVOICES_BAKED -o $@ port/render.c port/dllimage.c build/dlldata_gen.c build/voicedata_gen.o $(PORTALL) -lm
+build/port_render_full: port/render.c build/dlldata_gen.c build/voicedata_gen.o $(LIBDEPS)
+	$(PORTCC) -Ilib -DS4_DLL_BAKED -DS4_VOICES_BAKED -o $@ port/render.c build/dlldata_gen.c build/voicedata_gen.o $(LIBSRC) -lm -lpthread
 port-render-full-check: build/port_render_full
 	@./tools/port_render_check.sh build/port_render_full /nonexistent/voices
 .PHONY: port-render-full-check
 userlex-check: build/sapi4_speak build/port_render
 	@./tools/userlex_check.sh
 .PHONY: userlex-check
+
+# the library: lib/sapi4tts.h over the decompiled engine, as a static library for arm64 macOS (and a
+# compile check for iOS); tools/api_check.sh drives it through the golden, tag and user-lexicon sets
+LIBOBJS = $(patsubst %.c,build/lib/%.o,$(LIBSRC))
+build/lib/%.o: %.c $(wildcard src/*.h) lib/sapi4tts.h port/dllimage.h
+	@mkdir -p $(dir $@)
+	$(CC) -std=c11 -O2 -Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fno-builtin -arch arm64 -Isrc -Iport -Ilib -c -o $@ $<
+build/libsapi4tts.a: $(LIBOBJS)
+	rm -f $@ && ar rcs $@ $(LIBOBJS)
+build/api_check: tools/api_check.c build/libsapi4tts.a
+	$(CC) -std=c11 -O2 -Wall -Ilib -o $@ tools/api_check.c build/libsapi4tts.a -lm -lpthread
+build/api_extras: tools/api_extras.c build/libsapi4tts.a
+	$(CC) -std=c11 -O2 -Wall -Ilib -o $@ tools/api_extras.c build/libsapi4tts.a -lm -lpthread
+api-check: build/api_check build/api_extras build/sapi4_speak
+	@bash ./tools/api_check.sh
+ios-check:
+	@if xcrun --sdk iphoneos --show-sdk-path > /dev/null 2>&1; then \
+	  mkdir -p build/ios && for f in $(LIBSRC); do \
+	    xcrun --sdk iphoneos clang -std=c11 -O2 -Wall -Wextra -Wno-unused-parameter -ffp-contract=off -fno-builtin -arch arm64 -miphoneos-version-min=15.0 -Isrc -Iport -Ilib -c -o build/ios/$$(basename $$f .c).o $$f || exit 1; \
+	  done && rm -f build/ios/libsapi4tts.a && ar rcs build/ios/libsapi4tts.a build/ios/*.o && \
+	  xcrun --sdk iphoneos clang -std=c11 -arch arm64 -miphoneos-version-min=15.0 -Ilib -o build/ios/api_extras tools/api_extras.c build/ios/libsapi4tts.a && echo "IOS: build/ios/libsapi4tts.a ($$(ls build/ios/*.o | wc -l | tr -d ' ') objects) compiled for arm64 iOS, a test program links against it"; \
+	else echo "IOS: no iOS SDK here"; fi
+.PHONY: api-check ios-check
+# the same library with the DLL's data and the voice files compiled in (generated sources, never
+# committed): the golden set through the API with no files at all
+build/libsapi4tts_baked.a: $(LIBSRC) build/dlldata_gen.c build/voicedata_gen.o lib/sapi4tts.h
+	@mkdir -p build/libbaked
+	for f in $(LIBSRC) build/dlldata_gen.c; do $(CC) -std=c11 -O2 -ffp-contract=off -fno-builtin -arch arm64 -DS4_DLL_BAKED -DS4_VOICES_BAKED -Isrc -Iport -Ilib -c -o build/libbaked/$$(basename $$f .c).o $$f || exit 1; done
+	rm -f $@ && ar rcs $@ build/libbaked/*.o build/voicedata_gen.o
+build/api_check_baked: tools/api_check.c build/libsapi4tts_baked.a
+	$(CC) -std=c11 -O2 -Wall -Ilib -o $@ tools/api_check.c build/libsapi4tts_baked.a -lm -lpthread
+api-baked-check: build/api_check_baked
+	@mkdir -p work/api_baked && sed 's#|data/msttsl|#||#; s#OUTDIR#work/api_baked#' work/api/template.jobs > work/api_baked/jobs.txt
+	@./build/api_check_baked - work/api_baked/jobs.txt 2 > /dev/null
+	@python3 tools/pcmhash.py work/api_baked/*.wav | sort -k3 > work/api_baked/hashes.txt
+	@if [ "$$(sort -k3 tools/golden_hashes.txt)" = "$$(cat work/api_baked/hashes.txt)" ]; then echo "API-BAKED: all 46 golden renders through the fully baked library, no files"; else echo "API-BAKED: DIFFERENT"; exit 1; fi
+.PHONY: api-baked-check
