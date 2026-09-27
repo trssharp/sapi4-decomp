@@ -76,6 +76,59 @@ int32_t vc_CoInitialize(void) { uint32_t a[1] = { 0 }; return (int32_t)api(0x636
 void vc_CoUninitialize(void) { api(0x6369e220, 0, NULL); }
 uint32_t vc_CreateEventA(int32_t manual, int32_t initial) { uint32_t a[4] = { 0, (uint32_t)manual, (uint32_t)initial, 0 }; return api(0x6369e07c, 4, a); }
 uint32_t vc_GetCurrentThread(void) { return api(0x6369e078, 0, NULL); }
+// (buffers in C locals go through the guest stack)
+uint32_t vc_GetModuleFileNameA(uint32_t hmod, char *buf, uint32_t n) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - n - 16u) & ~15u;
+    uint32_t gb = c->s.r[ESP];
+    memcpy(decomp_guest_mem + gb, buf, n);
+    uint32_t a[3] = { hmod, gb, n };
+    uint32_t r = api(0x6369e06c, 3, a);
+    memcpy(buf, decomp_guest_mem + gb, n);
+    c->s.r[ESP] = sp;
+    return r;
+}
+int32_t vc_GetUserNameA(char *buf, uint32_t *n) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP], cap = *n;
+    c->s.r[ESP] = (sp - cap - 32u) & ~15u;
+    uint32_t gn = c->s.r[ESP], gb = gn + 16;
+    memcpy(decomp_guest_mem + gn, n, 4);
+    memcpy(decomp_guest_mem + gb, buf, cap);
+    uint32_t a[2] = { gb, gn };
+    int32_t r = (int32_t)api(0x6369e000, 2, a);
+    memcpy(n, decomp_guest_mem + gn, 4);
+    memcpy(buf, decomp_guest_mem + gb, cap);
+    c->s.r[ESP] = sp;
+    return r;
+}
+uint32_t vc_CreateFileA(const char *path, uint32_t access, uint32_t share, uint32_t disposition, uint32_t flags) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    size_t l = strlen(path) + 1;
+    c->s.r[ESP] = (sp - (uint32_t)l - 16u) & ~15u;
+    uint32_t gp_ = c->s.r[ESP];
+    memcpy(decomp_guest_mem + gp_, path, l);
+    uint32_t a[7] = { gp_, access, share, 0, disposition, flags, 0 };
+    uint32_t r = api(0x6369e04c, 7, a);
+    c->s.r[ESP] = sp;
+    return r;
+}
+uint32_t vc_GetFileSize(uint32_t h) { uint32_t a[2] = { h, 0 }; return api(0x6369e020, 2, a); }
+int32_t vc_ReadFile(uint32_t h, void *buf, uint32_t n, uint32_t *got) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - 16u) & ~15u;
+    uint32_t gg = c->s.r[ESP];
+    uint32_t a[5] = { h, g(buf), n, gg, 0 };
+    int32_t r = (int32_t)api(0x6369e01c, 5, a);
+    memcpy(got, decomp_guest_mem + gg, 4);
+    c->s.r[ESP] = sp;
+    return r;
+}
+int32_t vc_CloseHandle(uint32_t h) { return (int32_t)api(0x6369e018, 1, &h); }
+uint32_t vc_GetLastError(void) { return api(0x6369e028, 0, NULL); }
 void vc_InitializeCriticalSection(void *cs) { uint32_t a[1] = { g(cs) }; api(0x6369e054, 1, a); }
 
 // storage through the emulator's COM objects (their methods are host functions behind guest vtables)

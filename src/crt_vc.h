@@ -57,6 +57,20 @@ extern void (*vc_idle_hook)(void);
 int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp);
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio);
 void vc_DebugBreak(void);
+// KERNEL32 / ADVAPI32 file and identity calls of the user lexicon reader. A portable build answers
+// GetModuleFileNameA with the path set by vc_set_module_path, GetUserNameA with "User" (as the
+// emulator does) unless vc_set_user_name changed it, and reads files from the disk ('\\' as '/').
+uint32_t vc_GetModuleFileNameA(uint32_t hmod, char *buf, uint32_t n);
+int32_t vc_GetUserNameA(char *buf, uint32_t *n);
+uint32_t vc_CreateFileA(const char *path, uint32_t access, uint32_t share, uint32_t disposition, uint32_t flags);
+uint32_t vc_GetFileSize(uint32_t h);
+int32_t vc_ReadFile(uint32_t h, void *buf, uint32_t n, uint32_t *got);
+int32_t vc_CloseHandle(uint32_t h);
+uint32_t vc_GetLastError(void);
+#ifndef DECOMP_HOOK
+void vc_set_module_path(const char *path);
+void vc_set_user_name(const char *name);
+#endif
 // KERNEL32 GetCurrentThread (a pseudo handle)
 uint32_t vc_GetCurrentThread(void);
 // IUnknown::Release on a COM object handed over by the SAPI layer (hook build: the guest object)

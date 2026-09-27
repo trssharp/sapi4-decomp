@@ -88,6 +88,11 @@ int main(int argc, char **argv) {
 #ifdef VOICES_BAKED
     vc_files_use(voice_files, voice_nfiles);        // (the voices compiled in: `dir` names no real directory)
 #endif
+    {   // the engine's "module" lives in `dir`: its user lexicon is <dir>/Lex/<user>.lex
+        char mp[1100];
+        snprintf(mp, sizeof mp, "%s\\msttssyn.dll", dir);
+        vc_set_module_path(mp);
+    }
 #ifndef DLL_BAKED
     char path[1024];
     snprintf(path, sizeof path, "%s/msttssyn.dll", dir);
@@ -225,7 +230,6 @@ int main(int argc, char **argv) {
 }
 
 // what the portable build has no C for yet; none of it is reached by the voices this was checked with
-int32_t user_lex_load(UserLex *t) { (void)t; return 0; }
 int32_t text_from_other(char *text, GPTR(char) *out) { (void)text; (void)out; fprintf(stderr, "text mode not decompiled\n"); abort(); }
 uint8_t vm_proc_guest(int inst, uint8_t n, int16_t *left, int16_t *len) {
     (void)left; (void)len;

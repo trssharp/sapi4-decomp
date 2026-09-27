@@ -747,6 +747,61 @@ static void t_altpros(int iter) {
     check("alt_interpolate", iter, "values", o1, v, 4u * (uint32_t)m);
 }
 
+// the user lexicon's pronunciation checks on random phone strings: each converter, original then C
+static int ulex_bad;
+int32_t old_codes(const char *pron, GPTR(char) *out);
+int32_t lex_word_bad(const char *s);
+int32_t lex_pron_convert(const char *src, GPTR(char) *out);
+int32_t lex_pron_names(char *s, GPTR(char) *out);
+static void t_userlex(int iter) {
+    static const char *ph[] = { "AA", "AE", "AH", "AO", "AW", "AY", "EH", "ER", "EY", "IH", "IY", "OW", "OY", "UH", "UW",
+                                "B", "CH", "D", "DH", "F", "G", "HH", "JH", "K", "L", "M", "N", "NG", "P", "R", "S", "SH",
+                                "T", "TH", "V", "W", "Y", "Z", "ZH", "DX", "NX", "AX", "-", "#", "q", "xx", ("\x1bS5"), "h" };
+    char txt[400];
+    int n = 0, k = rndi(0, 12);
+    for (int i = 0; i < k; i++) {
+        const char *p = ph[rnd() % (sizeof ph / sizeof ph[0])];
+        n += sprintf(txt + n, "%s", p);
+        if (rnd() % 2 && strlen(p) >= 2 && p[0] != '\x1b') txt[n++] = (char)('0' + rndi(0, 2));
+        if (i < k - 1 || rnd() % 3) txt[n++] = ' ';
+    }
+    txt[n] = 0;
+    uint32_t gs = galloc(400), go1 = galloc(4), go2 = galloc(4);
+    memcpy(gp(gs, 400), txt, (size_t)n + 1);
+    wr32(C, go1, 0); wr32(C, go2, 0);
+    // lex_pron_convert
+    HeapSnap h0; heap_snap(&h0);
+    uint32_t a[2] = { gs, go1 };
+    uint32_t r1 = call(0x63674af3, 2, a);
+    HeapSnap h1; heap_snap(&h1);
+    heap_restore(&h0);
+    uint32_t r2 = (uint32_t)lex_pron_convert(gp(gs, 1), gp(go1, 4));
+    check("lex_pron_convert", iter, "EAX", &r1, &r2, 4);
+    heap_check("lex_pron_convert", iter, &h1);
+    free(h0.mem); free(h1.mem);
+    // lex_pron_names on the result (it frees its own copy of the codes)
+    uint32_t conv = rd32(C, go1);
+    heap_snap(&h0);
+    uint32_t saved = E->cur->rand_seed;
+    uint32_t b[2] = { conv, go2 };
+    uint32_t s1 = call(0x63674bf7, 2, b);
+    heap_snap(&h1);
+    heap_restore(&h0);
+    E->cur->rand_seed = saved;
+    uint32_t s2 = (uint32_t)lex_pron_names(gp(conv, 1), gp(go2, 4));
+    check("lex_pron_names", iter, "EAX", &s1, &s2, 4);
+    heap_check("lex_pron_names", iter, &h1);
+    free(h0.mem); free(h1.mem);
+    if (s1) ulex_bad++;
+    // the word check
+    const char *words[] = { "hello", "o'neil", "a-b", "x.y", "bad1", "tab\there", "", "Zorgle" };
+    const char *w = words[rnd() % 8];
+    uint32_t gw = galloc(32);
+    memcpy(gp(gw, 32), w, strlen(w) + 1);
+    uint32_t w1 = call(0x636750ad, 1, &gw), w2 = (uint32_t)lex_word_bad(gp(gw, 1));
+    check("lex_word_bad", iter, "EAX", &w1, &w2, 4);
+}
+
 // unit_prosody_a on random phrases: every field it reads, random; the unit array and the stage compared
 static void t_prosody(int iter) {
     int n = rndi(1, 12);
@@ -2446,6 +2501,7 @@ int main(int argc, char **argv) {
         t_senone(it);
         t_latapply(it);
         t_altpros(it);
+        t_userlex(it);
         t_prosody(it);
         t_tapes(it);
         t_rate(it);
@@ -2475,6 +2531,6 @@ int main(int argc, char **argv) {
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
-    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d, texts split %d (%d into several sentences, %d skipped), reader runs %d with %d events, %d with user lexicon words; results -3..7: %d %d %d %d %d %d %d %d %d %d %d; lattice rule runs %d; alternative prosody runs %d over %d words)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed, split_runs, split_multi, split_skipped, reader_runs, reader_events, reader_lex, reader_rc[1], reader_rc[2], reader_rc[3], reader_rc[4], reader_rc[5], reader_rc[6], reader_rc[7], reader_rc[8], reader_rc[9], reader_rc[10], reader_rc[11], lat_runs, alt_runs, alt_words);
+    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d, texts rewritten %d, texts split %d (%d into several sentences, %d skipped), reader runs %d with %d events, %d with user lexicon words; results -3..7: %d %d %d %d %d %d %d %d %d %d %d; lattice rule runs %d; alternative prosody runs %d over %d words; user lexicon pronunciations rejected %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found, txt_changed, split_runs, split_multi, split_skipped, reader_runs, reader_events, reader_lex, reader_rc[1], reader_rc[2], reader_rc[3], reader_rc[4], reader_rc[5], reader_rc[6], reader_rc[7], reader_rc[8], reader_rc[9], reader_rc[10], reader_rc[11], lat_runs, alt_runs, alt_words, ulex_bad);
     return fails ? 1 : 0;
 }

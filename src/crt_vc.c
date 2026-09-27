@@ -1,4 +1,6 @@
 #include "crt_vc.h"
+#include <stdio.h>
+#include <string.h>
 #include <stdint.h>
 
 static void swap_elems(char *a, char *b, size_t w) {
@@ -97,6 +99,64 @@ int32_t vc_PostMessageA(uint32_t hwnd, uint32_t msg, uint32_t wp, uint32_t lp) {
 int32_t vc_SetThreadPriority(uint32_t h, int32_t prio) { (void)h; (void)prio; return 1; }
 void vc_DebugBreak(void) {}
 uint32_t vc_GetCurrentThread(void) { return 0xfffffffeu; }
+static char vc_module_path[1024] = "C:\\SPEECH\\msttssyn.dll", vc_user[260] = "User";
+static uint32_t vc_last_error;
+void vc_set_module_path(const char *path) { snprintf(vc_module_path, sizeof vc_module_path, "%s", path); }
+void vc_set_user_name(const char *name) { snprintf(vc_user, sizeof vc_user, "%s", name); }
+uint32_t vc_GetModuleFileNameA(uint32_t hmod, char *buf, uint32_t n) {
+    (void)hmod;
+    size_t l = strlen(vc_module_path);
+    if (!n) return 0;
+    if (l >= n) l = n - 1;
+    memcpy(buf, vc_module_path, l);
+    buf[l] = 0;
+    return (uint32_t)l;
+}
+int32_t vc_GetUserNameA(char *buf, uint32_t *n) {
+    size_t l = strlen(vc_user) + 1;
+    if (*n < l) { *n = (uint32_t)l; vc_last_error = 122; return 0; }
+    memcpy(buf, vc_user, l);
+    *n = (uint32_t)l;
+    return 1;
+}
+static FILE *vc_files_open[8];
+uint32_t vc_CreateFileA(const char *path, uint32_t access, uint32_t share, uint32_t disposition, uint32_t flags) {
+    (void)access; (void)share; (void)disposition; (void)flags;
+    char p[1024];
+    size_t k = 0;
+    for (; path[k] && k < sizeof p - 1; k++) p[k] = path[k] == '\\' ? '/' : path[k];
+    p[k] = 0;
+    int slot = 0;
+    while (slot < 8 && vc_files_open[slot]) slot++;
+    FILE *f = slot < 8 ? fopen(p, "rb") : NULL;
+    if (!f) { vc_last_error = 2; return 0xffffffffu; }
+    vc_files_open[slot] = f;
+    return 0x200u + (uint32_t)slot;
+}
+static FILE *vc_file(uint32_t h) { return h >= 0x200u && h < 0x208u ? vc_files_open[h - 0x200u] : NULL; }
+uint32_t vc_GetFileSize(uint32_t h) {
+    FILE *f = vc_file(h);
+    if (!f) { vc_last_error = 6; return 0xffffffffu; }
+    long pos = ftell(f);
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, pos, SEEK_SET);
+    return (uint32_t)n;
+}
+int32_t vc_ReadFile(uint32_t h, void *buf, uint32_t n, uint32_t *got) {
+    FILE *f = vc_file(h);
+    if (!f) { vc_last_error = 6; return 0; }
+    *got = (uint32_t)fread(buf, 1, n, f);
+    return 1;
+}
+int32_t vc_CloseHandle(uint32_t h) {
+    FILE *f = vc_file(h);
+    if (!f) return 0;
+    fclose(f);
+    vc_files_open[h - 0x200u] = NULL;
+    return 1;
+}
+uint32_t vc_GetLastError(void) { return vc_last_error; }
 // storage objects of the portable build: a storage (a compound file's root) or a stream (its bytes)
 #include "cfb.h"
 #include <string.h>

@@ -89,7 +89,6 @@ int main(int argc, char **argv) {
 
 // not decompiled yet: no user lexicon file (as the emulator has none), and the paths a plain text
 // never takes
-int32_t user_lex_load(UserLex *t) { (void)t; return 0; }
 int32_t text_from_other(char *text, GPTR(char) *out) { (void)text; (void)out; fprintf(stderr, "port_fe: text mode not decompiled\n"); abort(); }
 uint8_t vm_proc_guest(int inst, uint8_t n, int16_t *left, int16_t *len) {
     (void)left; (void)len;

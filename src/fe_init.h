@@ -32,5 +32,15 @@ FrontEnd *fe_ctor(FrontEnd *fe);                        // @0x636834d4 thiscall
 // @0x636835bc thiscall: queues, the voice description (+0x8d8 its pitch), window and message; 1
 int32_t fe_setup(FrontEnd *fe, uint8_t *queue_in, uint8_t *queue_out, const uint8_t *voice, int32_t voice_idx,
                  int32_t f50, int32_t unused, uint32_t hwnd, uint32_t msg, int32_t f8c);
-// not decompiled yet (harness/guest.c): the user lexicon file reader
-int32_t user_lex_load(UserLex *t);                      // @0x636751e0 stdcall
+// the user lexicon file (src/userlex.c)
+// @0x636751e0 stdcall: <engine dir>\Lex\<user>.lex into t; 0 (also when there is no file), or an error
+int32_t user_lex_load(UserLex *t);
+int32_t module_dir(char *buf, uint32_t n);          // @0x6367e6d7 stdcall: the DLL's directory
+int32_t lex_word_bad(const char *s);                // @0x636750ad stdcall: a character other than letters and a few
+uint8_t old_code(const char *s);                    // @0x6367486a stdcall: 1-based index in the older phone table, 0
+// @0x6367456e stdcall: a pronunciation in the older phone codes (escapes kept); 1 if it did not convert cleanly
+int32_t old_codes(const char *pron, GPTR(char) *out);
+int32_t lex_pron_convert(const char *src, GPTR(char) *out);   // @0x63674af3 stdcall: blank-separated phones, lower case
+int32_t lex_pron_names(char *s, GPTR(char) *out);   // @0x63674bf7 stdcall: codes back to names (frees its copy)
+int32_t free_if_a(void *p);                         // @0x63674be0 stdcall
+int32_t free_if_b(void *p);                         // @0x63674cc1 stdcall

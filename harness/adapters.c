@@ -827,3 +827,11 @@ void hk_empty_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(empty_ctor(GPH(uint8_t,
 void hk_voc_engine_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(voc_engine_ctor(THIS(VocEngine)))); }
 void hk_fe_get_pitch(Emu *e, X86 *c) { E_RET((uint32_t)fe_get_pitch(THIS(FrontEnd), GPH(uint16_t, A(0), 2))); }
 void hk_unit_get_rate(Emu *e, X86 *c) { E_RET((uint32_t)unit_get_rate(THIS(UnitStage), GPH(uint32_t, A(0), 4))); }
+void hk_module_dir(Emu *e, X86 *c) { E_RET((uint32_t)module_dir(GPH(char, A(0), A(1)), A(1))); }
+void hk_lex_word_bad(Emu *e, X86 *c) { E_RET((uint32_t)lex_word_bad(GSTR(A(0)))); }
+void hk_old_code(Emu *e, X86 *c) { E_RET(old_code(GSTR(A(0)))); }
+void hk_old_codes(Emu *e, X86 *c) { E_RET((uint32_t)old_codes(GSTR(A(0)), GPH(uint32_t, A(1), 4))); }
+void hk_lex_pron_convert(Emu *e, X86 *c) { E_RET((uint32_t)lex_pron_convert(GSTR(A(0)), GPH(uint32_t, A(1), 4))); }
+void hk_lex_pron_names(Emu *e, X86 *c) { E_RET((uint32_t)lex_pron_names((char *)GSTR(A(0)), GPH(uint32_t, A(1), 4))); }
+void hk_free_if_a(Emu *e, X86 *c) { E_RET((uint32_t)free_if_a(A(0) ? GPH(uint8_t, A(0), 1) : NULL)); }
+void hk_free_if_b(Emu *e, X86 *c) { E_RET((uint32_t)free_if_b(A(0) ? GPH(uint8_t, A(0), 1) : NULL)); }
