@@ -45,3 +45,8 @@ build/sapi4_cover: $(EMU) $(DECOMP) $(HOOKS) emu/sapi4_speak.c $(HDR)
 unit: build/unit
 	./build/unit data/msttsl 2000
 .PHONY: unit
+
+# every mode x 9 texts (tags, spelling, numbers, long) x 2 warm utterances: hooks vs the original
+hookdiff: build/sapi4_speak
+	./tools/hookdiff.sh
+.PHONY: hookdiff

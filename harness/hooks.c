@@ -15,6 +15,21 @@ void vc_free(void *p) {
     if (p) emu_free(decomp_emu, (uint32_t)((uint8_t *)p - decomp_guest_mem));
 }
 
+// KERNEL32 Sleep as the emulator does it: advance the virtual clock and yield (here: once the hook
+// returns, since a host function cannot be suspended halfway)
+void vc_sleep(uint32_t ms) {
+    decomp_emu->vtime += ms;
+    decomp_emu->stop_reason = STOP_YIELD;
+    emu_cpu(decomp_emu)->stop = 1;
+}
+void decomp_warn(const char *msg) {
+#ifndef CV_NO_DEBUG_ENV
+    fprintf(stderr, "decomp WARNING: %s\n", msg);
+#else
+    (void)msg;
+#endif
+}
+
 // MSVCRT rand() on the calling guest thread's own state (exactly what the emulator's CRT does)
 int vc_rand(void) {
     Thread *t = decomp_emu->cur;

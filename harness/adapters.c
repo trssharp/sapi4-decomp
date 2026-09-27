@@ -6,6 +6,7 @@
 #include "lpc.h"
 #include "codec.h"
 #include "effect.h"
+#include "voice.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -158,3 +159,7 @@ void hk_effect_free(Emu *e, X86 *c) { effect_free(THIS(Effect)); }
 void hk_effect_preset(Emu *e, X86 *c) { E_RET(effect_preset(THIS(Effect), AI(0))); }
 void hk_effect_init(Emu *e, X86 *c) { E_RET((uint16_t)effect_init(THIS(Effect), AI(0), AI(1))); }
 void hk_effect_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(effect_ctor(THIS(Effect)))); }
+
+void hk_voc_unit_decode(Emu *e, X86 *c) {
+    E_RET(host_to_guest(voc_unit_decode(AI(0), GPH(VocVoice, A(1), sizeof(VocVoice)), GPH(VocSynthState, A(2), sizeof(VocSynthState)))));
+}
