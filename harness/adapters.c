@@ -229,3 +229,4 @@ void hk_unit_prosody(Emu *e, X86 *c) {
     E_RET(unit_prosody(THIS(UnitStage), n > 0 ? GPH(PhoneIn, A(0), sizeof(PhoneIn) * n) : NULL, n, GPH(int32_t, A(2), 4),
                        AI(3), GPH(UnitOutBuf, A(4), sizeof(UnitOutBuf))));
 }
+void hk_unit_prosody_a(Emu *e, X86 *c) { unit_prosody_a(THIS(UnitStage), AI(0)); }

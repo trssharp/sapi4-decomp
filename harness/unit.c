@@ -12,6 +12,7 @@
 #include "effect.h"
 #include "tags.h"
 #include "senone.h"
+#include "unitsel.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -500,6 +501,41 @@ static void t_senone(int iter) {
     check("phone_fixups", iter, "names", o1, gp(gph, 100u * (n ? n : 1)), 100u * (n ? n : 1));
 }
 
+// unit_prosody_a on random phrases: every field it reads, random; the unit array and the stage compared
+static void t_prosody(int iter) {
+    int n = rndi(1, 12);
+    uint32_t gu = galloc(sizeof(UnitStage)), gr = galloc(sizeof(UnitRec) * (n + 1));
+    UnitStage *u = gp(gu, sizeof *u);
+    memset(u, 0, sizeof *u);
+    u->recs = gr;
+    u->sil_phone = 3;
+    u->last_b = (iter & 1) ? -1 : rndi(80, 200);
+    UnitRec *r = gp(gr, sizeof(UnitRec) * n);
+    memset(r, 0, sizeof(UnitRec) * (n + 1));
+    for (int i = 0; i < n; i++) {
+        r[i].phone = rndi(0, 5);
+        r[i].dur = (float)rndi(1, 300) / 7.0f;
+        r[i].nstates = rndi(0, 5);
+        for (int k = 0; k < r[i].nstates; k++) {
+            uint32_t q = rnd() % 6;
+            r[i].a[k] = q == 0 ? 0.0f : q == 1 ? 1.0f : (float)(rnd() % 1000) / 1000.0f;
+            r[i].b[k] = (rnd() % 3) ? 0.0f : (float)rndi(60, 250) + 0.25f * (float)(rnd() % 4);
+            r[i].c[k] = (float)(rnd() % 100);
+        }
+        if (r[i].nstates && rnd() % 2) r[i].a[0] = 0.0f;
+        if (r[i].nstates && rnd() % 2) r[i].a[r[i].nstates - 1] = 1.0f;
+    }
+    reg_add(gu, sizeof(UnitStage)); reg_add(gr, sizeof(UnitRec) * (n + 1));
+    uint32_t a[1] = { (uint32_t)n };
+    emu_set_insn_budget(E, 50000000);
+    thiscall(0x63686c7d, gu, 1, a);
+    emu_set_insn_budget(E, 0);
+    if (emu_failed(E)) { fprintf(stderr, "prosody case %d: original faulted/hung, skipped\n", iter); exit(1); }
+    reg_save();
+    unit_prosody_a(gp(gu, sizeof(UnitStage)), n);
+    reg_check("unit_prosody_a", iter);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -524,6 +560,7 @@ int main(int argc, char **argv) {
         t_effect(it);
         t_tags(it);
         t_senone(it);
+        t_prosody(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }

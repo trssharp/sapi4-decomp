@@ -155,3 +155,157 @@ int unit_prosody(UnitStage *u, const PhoneIn *ph, int n, int32_t *last, int next
     *last = recs[n - 1].phone;
     return 0;
 }
+
+LAYOUT(UnitStage, last_c, 0x2b8);
+
+// @0x63686c7d: fill in the unspecified (0) b[] targets of every state by interpolating in time between
+// the specified ones, inserting a state at a unit's start (a == 0 there) and end (a == 1) where needed.
+// Written as the original's control flow (labels = its basic blocks) because the running time lives on
+// the x87 stack across them and is sometimes re-read from a float copy: the roundings are the point.
+void unit_prosody_a(UnitStage *u, int n) {
+    UnitRec *R;
+    const double Z = 0.0;
+    float a28 = 0.0f, T10 = 0.0f, Tn = 0.0f, Tc, bval, last;
+    int i = 0, s = 0, cur = 0, carry = 0, last_i = n - 1;
+    int found, i_end, s_end, j, lim, cnt, found2, i2;
+    double t = 0.0;
+top:
+    R = GP(UnitRec, u->recs);
+    if (i < last_i) goto a;
+    if (i != last_i) goto end;
+    if (s < R[n - 1].nstates) goto a;
+    if (R[n - 1].nstates > 1) goto end;
+a:
+    found = 0;
+    T10 = (float)t;
+    if (i >= n) goto b;
+    for (;;) {
+        if (s < R[i].nstates) {
+            for (;;) {
+                if (!x87_je(R[i].b[s], Z)) { found = 1; break; }
+                s++;
+                if (s >= R[i].nstates) break;
+            }
+        }
+        if (found) goto f;
+        if (i + 1 != n) s = 0;
+        t = t + R[i].dur;
+        i++;
+        if (i >= n) break;
+    }
+b:
+    if (!found) goto g;
+f: {
+        double v;
+        if (!x87_je(Z, R[i].a[s])) {
+            v = (double)R[i].dur * R[i].a[s];
+            Tn = (float)(v + t);
+        } else if (i == 0) {
+            Tn = (float)t;
+        } else {
+            if (R[i - 1].nstates == 0) v = R[i - 1].dur;
+            else v = (double)R[i - 1].a[R[i - 1].nstates - 1] * R[i - 1].dur;
+            Tn = (float)(v + t);
+        }
+        bval = R[i].b[s];
+        if (u->last_b == -1) u->last_b = x87_ftol(R[i].b[s]);
+        goto m;
+    }
+g:
+    Tn = (float)t;
+    if (u->last_b == -1) u->last_b = 0x6e;
+    i = last_i;
+    bval = (float)(double)u->last_b;
+    s = R[last_i].nstates;
+m:
+    s_end = s;
+    t = T10;
+    Tc = T10;
+    i_end = i;
+    last = -1.0f;
+    j = cur;
+    if (cur > i_end) goto nn;
+    for (;;) {
+        R = GP(UnitRec, u->recs);
+        UnitRec *r = R + j;
+        int nst = r->nstates;
+        if (nst == 0) {
+            r->nstates = nst + 1;
+            r->a[0] = 0.0f; r->b[0] = 0.0f; r->c[0] = 0.0f;
+            if (j == i_end) s_end++;
+        } else if (!x87_je(Z, r->a[0])) {
+            if (nst == 5) r->nstates = 4;
+            memmove(&r->a[1], &r->a[0], (size_t)(uint32_t)(r->nstates * 4));
+            memmove(&r->b[1], &r->b[0], (size_t)(uint32_t)(r->nstates * 4));
+            memmove(&r->c[1], &r->c[0], (size_t)(uint32_t)(r->nstates * 4));
+            r->a[0] = 0.0f; r->b[0] = 0.0f; r->c[0] = 0.0f;
+            r->nstates++;
+            if (j == i_end) s_end++;
+            t = Tc;
+        }
+        nst = r->nstates;
+        if (!x87_je(r->a[nst - 1], 1.0)) {
+            if (nst == 5) r->nstates = 4;
+            r->a[r->nstates] = 1.0f;
+            r->b[r->nstates] = 0.0f;
+            r->c[r->nstates] = 0.0f;
+            r->nstates++;
+        }
+        lim = j == i_end ? s_end : r->nstates;
+        int ecx = carry;
+        if (carry < lim) {
+            cnt = lim - carry;
+            for (int k = carry; cnt; k++, cnt--) {
+                if (!x87_je(Z, r->b[k])) {
+#ifdef DECOMP_HOOK
+                    decomp_warn("unit_prosody_a: a specified b[] inside an interpolated stretch (the original calls DebugBreak)");
+#endif
+                    t = Tc;
+                    continue;
+                }
+                double P0 = (double)u->last_b;
+                double q = ((double)r->dur * r->a[k] + t - a28) * ((double)bval - P0);
+                r->b[k] = (float)(q / ((double)Tn - a28) + P0);
+                last = r->b[k];
+            }
+            ecx = lim;
+        }
+        carry = 0;
+        if (ecx == r->nstates) {
+            double x = (double)r->dur + t;
+            Tc = (float)x;
+            t = x;
+        }
+        j++;
+        if (j > i_end) break;
+    }
+nn:
+    if (!x87_je(-1.0, last)) u->last_b = x87_ftol(last);
+    i2 = i_end;
+    s = s_end;
+    found2 = 1;
+    R = GP(UnitRec, u->recs);
+    while (i2 < n) {
+        UnitRec *r = R + i2;
+        int nst = r->nstates;
+        if (nst == 0 || !x87_je(Z, r->a[0])) break;
+        while (s < nst) {
+            if (x87_je(Z, r->b[s])) { found2 = 0; break; }
+            u->last_b = x87_ftol(r->b[s]);
+            a28 = (float)((double)r->dur * r->a[s] + t);
+            s++;
+        }
+        if (!found2) break;
+        if (!x87_je(1.0, r->a[s - 1])) break;
+        i2++;
+        if (i2 != n) s = 0;
+        t = t + r->dur;
+    }
+    carry = s;
+    cur = i2;
+    i = i2;
+    goto top;
+end:
+    R = GP(UnitRec, u->recs);
+    if (u->sil_phone == R[n - 1].phone) u->last_b = -1;
+}

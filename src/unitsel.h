@@ -59,6 +59,9 @@ typedef struct UnitStage {
     int32_t tree_mode;         // 0x298 1: senone_lookup; otherwise the older query (0x6367233c)
     int32_t senone_base;       // 0x29c
     int32_t sil_phone;         // 0x2a0 phone index used outside the phrase
+    uint8_t _2a4[0x2b4 - 0x2a4];
+    int32_t last_b;            // 0x2b4 last b[] value carried across phrases (-1: none)
+    float last_c;              // 0x2b8 the same for c[] (-1: none)
 } UnitStage;
 
 // the query of the older tree interface (0x6367233c, not decompiled; never reached by the corpus)
