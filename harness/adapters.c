@@ -1,6 +1,7 @@
 // Adapters: guest arguments -> the portable C in src/ -> guest results. Pointers are translated to host
 // pointers into guest memory (bounds-checked for the extent the function touches).
 #include "adapters.h"
+#include "fe_lex.h"
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -441,3 +442,14 @@ void hk_vm_proc_63693e9c(Emu *e, X86 *c) { E_RET(vm_proc(2, 58, GPH(int16_t, A(0
 void hk_vm_proc_63693eb4(Emu *e, X86 *c) { E_RET(vm_proc(2, 59, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
 void hk_vm_proc_63693ecc(Emu *e, X86 *c) { E_RET(vm_proc(2, 60, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
 void hk_vm_proc_63693ee2(Emu *e, X86 *c) { E_RET(vm_proc(2, 61, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_lex_pack(Emu *e, X86 *c) { E_RET(lex_pack((uint8_t)A(0), (uint16_t)A(1))); }
+void hk_lex_field18(Emu *e, X86 *c) { E_RET(lex_field18((uint16_t)A(0))); }
+#define LEXF(addr, table, n) void hk_lex_field_##addr(Emu *e, X86 *c) { E_RET(lex_field(table, (uint16_t)A(0), n)); }
+LEXF(6369a87e, 0x6371a748, 12)
+LEXF(636992ad, 0x636d33f8, 12)
+LEXF(63698dcf, 0x636d1bd8, 12)
+LEXF(636988f7, 0x636cffe0, 11)
+LEXF(6369844e, 0x636cefd0, 11)
+LEXF(63697f78, 0x636cdba8, 9)
+LEXF(63697ad1, 0x636cd1d0, 13)
+LEXF(6369971c, 0x636d4078, 10)

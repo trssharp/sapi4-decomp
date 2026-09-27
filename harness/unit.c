@@ -16,6 +16,7 @@
 #include "fe_rules.h"
 #include "voice.h"
 #include "fe_vm.h"
+#include "fe_lex.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1309,6 +1310,33 @@ static void t_proc(int iter) {
     free(d0); free(d1); free(h0.mem); free(h1.mem);
 }
 
+// the lexicon helpers: key packing and the n-bit field arrays
+static void t_lex(int iter) {
+    uint8_t *codes = gp(gaddr(LEX_CODES), 64);
+    uint8_t bits = (iter & 1) ? 5 : 6;
+    for (int i = 0; i < 64; i++) codes[i] = (uint8_t)rndi(0, (1 << bits) - 1);
+    uint16_t cnt = (uint16_t)rndi(1, 15);
+    reg_add(gaddr(LEX_KEY), 32);
+    uint32_t a[2] = { bits, cnt };
+    uint32_t r1 = call(0x6369a9c8, 2, a);
+    reg_save();
+    uint32_t r2 = lex_pack(bits, cnt);
+    check("lex_pack", iter, "EAX", &r1, &r2, 4);
+    reg_check("lex_pack", iter);
+    static const struct { uint32_t fn, table; int n; } fs[] = {
+        { 0x6369a87e, 0x6371a748, 12 }, { 0x636992ad, 0x636d33f8, 12 }, { 0x63698dcf, 0x636d1bd8, 12 },
+        { 0x636988f7, 0x636cffe0, 11 }, { 0x6369844e, 0x636cefd0, 11 }, { 0x63697f78, 0x636cdba8, 9 },
+        { 0x63697ad1, 0x636cd1d0, 13 }, { 0x6369971c, 0x636d4078, 10 } };
+    for (int f = 0; f < 8; f++) {
+        uint32_t idx = (uint32_t)rndi(0, 2500);
+        uint32_t e1 = call(fs[f].fn, 1, &idx), e2 = lex_field(fs[f].table, (uint16_t)idx, fs[f].n);
+        check("lex_field", iter, "EAX", &e1, &e2, 4);
+    }
+    uint32_t idx = (uint32_t)rndi(0, 30000);
+    uint32_t e1 = call(0x6369a47b, 1, &idx), e2 = lex_field18((uint16_t)idx);
+    check("lex_field18", iter, "EAX", &e1, &e2, 4);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -1342,6 +1370,7 @@ int main(int argc, char **argv) {
         t_match(it);
         t_apply(it);
         t_exec(it);
+        t_lex(it);
         if (it < 600) t_main(it);
         if (it < 900) t_proc(it);
         if (it < 500) t_viterbi(it);
