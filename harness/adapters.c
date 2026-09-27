@@ -2,6 +2,7 @@
 // pointers into guest memory (bounds-checked for the extent the function touches).
 #include "adapters.h"
 #include "fe_lex.h"
+#include "fe_word.h"
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -487,3 +488,7 @@ void hk_vm_proc_63693a03(Emu *e, X86 *c) { E_RET(vm_proc(2, 42, GPH(int16_t, A(0
 void hk_tag_number(Emu *e, X86 *c) { tag_number((int16_t)A(0), (int16_t)A(1), (int16_t)A(2)); E_RET(c->s.r[EAX]); }
 void hk_tag_pair(Emu *e, X86 *c) { tag_pair((int16_t)A(0), (int16_t)A(1), (int16_t)A(2)); E_RET(c->s.r[EAX]); }
 void hk_count_words(Emu *e, X86 *c) { E_RET((uint32_t)count_words((int16_t)A(0), (int16_t)A(1))); }
+void hk_word_stop_weight(Emu *e, X86 *c) { word_stop_weight(GPH(uint8_t, A(0), 0xb600), (int16_t)A(1), (int16_t)A(2)); E_RET(c->s.r[EAX]); }
+void hk_word_cluster_find(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)word_cluster_find((int16_t)A(0), (int16_t)A(1), (int16_t)A(2), (int16_t)A(3))); }
+void hk_word_cluster(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)word_cluster(GPH(int16_t, A(0), 2), (int16_t)A(1))); }
+void hk_word_durations(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | word_durations(GPH(uint8_t, A(0), 0xb600))); }

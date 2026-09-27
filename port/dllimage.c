@@ -1,7 +1,7 @@
 // The portable build's view of msttssyn.dll's data: the sections of the user's copy of the DLL,
 // mapped at their offsets, read at run time (nothing of Microsoft's is compiled in). A DLL address is
-// the original's preferred-base address. Pointer-holding globals of .data get a table of host
-// pointers, one slot per 32-bit global, initialised from the DLL's base relocations.
+// the original's preferred-base address. Pointer-holding dwords (globals in .data, tables in .rdata)
+// get a table of host pointers, one slot per aligned dword, initialised from the base relocations.
 #include "dllimage.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,7 +11,6 @@
 
 static uint8_t *image;
 static uint32_t image_size;
-static uint32_t data_lo, data_hi;       // the .data section (preferred-base addresses)
 static void **ptr_slots;
 
 static uint32_t rd16(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8; }
@@ -39,10 +38,9 @@ int dll_image_load(const char *path) {
         uint32_t vsize = rd32(sec + 8), va = rd32(sec + 12), rsize = rd32(sec + 16), raw = rd32(sec + 20);
         uint32_t len = rsize < vsize ? rsize : vsize;
         if (va + len <= image_size && raw + len <= (uint32_t)n) memcpy(image + va, file + raw, len);
-        if (!memcmp(sec, ".data", 6)) { data_lo = PREF_BASE + va; data_hi = PREF_BASE + va + vsize; }
     }
-    // the pointer slots of .data: every relocated dword becomes a host pointer into the image
-    ptr_slots = calloc((data_hi - data_lo) / 4 + 1, sizeof(void *));
+    // the pointer slots: every relocated (aligned) dword becomes a host pointer into the image
+    ptr_slots = calloc(image_size / 4 + 1, sizeof(void *));
     uint32_t rel_va = rd32(opt + 96 + 5 * 8), rel_size = rd32(opt + 96 + 5 * 8 + 4);
     for (uint32_t off = 0; off + 8 <= rel_size;) {
         const uint8_t *blk = image + rel_va + off;
@@ -52,9 +50,9 @@ int dll_image_load(const char *path) {
             uint32_t ent = rd16(blk + e);
             if ((ent >> 12) != 3) continue;
             uint32_t at = PREF_BASE + page + (ent & 0xfff);
-            if (at >= data_lo && at < data_hi && ((at - data_lo) & 3) == 0) {
+            if (((at - PREF_BASE) & 3) == 0 && at - PREF_BASE < image_size) {
                 uint32_t v = rd32(image + (at - PREF_BASE));
-                if (v >= PREF_BASE && v < PREF_BASE + image_size) ptr_slots[(at - data_lo) / 4] = image + (v - PREF_BASE);
+                if (v >= PREF_BASE && v < PREF_BASE + image_size) ptr_slots[(at - PREF_BASE) / 4] = image + (v - PREF_BASE);
             }
         }
         off += size;
@@ -69,6 +67,6 @@ void *decomp_dll_data(uint32_t addr) {
 }
 
 void **decomp_dll_ptr(uint32_t addr) {
-    if (addr < data_lo || addr >= data_hi || ((addr - data_lo) & 3)) { fprintf(stderr, "dll_ptr: %08x not a .data slot\n", addr); abort(); }
-    return &ptr_slots[(addr - data_lo) / 4];
+    if (addr < PREF_BASE || addr - PREF_BASE >= image_size || ((addr - PREF_BASE) & 3)) { fprintf(stderr, "dll_ptr: %08x not a dword of the image\n", addr); abort(); }
+    return &ptr_slots[(addr - PREF_BASE) / 4];
 }

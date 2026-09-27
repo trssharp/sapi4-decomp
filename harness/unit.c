@@ -17,6 +17,7 @@
 #include "voice.h"
 #include "fe_vm.h"
 #include "fe_lex.h"
+#include "fe_word.h"
 #include "../port/lexdump.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -1618,6 +1619,25 @@ static void t_procx(int iter) {
     emu_free(E, blk);
 }
 
+// the word object's duration increments, on random letters (with hyphens) or words from the list
+static void t_word(int iter) {
+    uint32_t go = galloc(0xb600);
+    uint8_t *w = gp(go, 0xb600);
+    for (int i = 0; i < 0xb600; i++) w[i] = (uint8_t)rnd();
+    uint8_t *ta = w + 0x585;
+    int16_t s = (int16_t)rndi(2, 30), e = (int16_t)(s + rndi(0, 40));
+    for (int i = 0; i < 0x80; i++) ta[i] = (uint8_t)((rnd() % 9) ? rndi('a', 'z') : (rnd() & 1) ? '-' : ' ');
+    memcpy(w, &s, 2); memcpy(w + 2, &e, 2);
+    reg_add(go, 0xb600);
+    reg_add(gaddr(WORD_TAPE), 4);
+    uint32_t r1 = call(0x63696dd8, 3, (uint32_t[]){ go, 0, 0 }) & 0xff;
+    reg_save();
+    uint32_t r2 = word_durations(w);
+    check("word_durations", iter, "AL", &r1, &r2, 4);
+    reg_check("word_durations", iter);
+    emu_free(E, go);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -1678,6 +1698,7 @@ int main(int argc, char **argv) {
         t_lexlookup(it);
         t_lexmain(it);
         t_procx(it);
+        t_word(it);
         if (it < 600) t_main(it);
         if (it < 900) t_proc(it);
         if (it < 500) t_viterbi(it);
