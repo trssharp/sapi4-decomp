@@ -90,8 +90,29 @@ typedef struct AltBucket {
     GPTR(const uint8_t) nright;// 0x14
     GPTR(GPTR(const int16_t)) left;   // 0x18 context senone sets
     GPTR(GPTR(const int16_t)) right;  // 0x1c
+    GPTR(const int16_t) nunits;       // 0x20 per rule: units it proposes
+    GPTR(GPTR(const int16_t)) units;  // 0x24
+    GPTR(GPTR(const char)) tails;     // 0x28
 } AltBucket;
 typedef struct AltRules { GPTR(const AltBucket) bucket[256]; } AltRules;
+
+// ---- loading (vload.c)
+// a Senone stream record: a senone's statistics
+typedef struct SenoneRec { char name[8]; int32_t idx; int32_t a, b; float c, d; } SenoneRec;
+// @0x63685847 stdcall: if flag, a count byte then that many int16 at *pp (skipped); else none
+void alt_arg(int32_t flag, const char **pp, uint8_t *count, GPTR(const int16_t) *ptr);
+// @0x6368587f stdcall: n buckets of rules from the AltUnits stream's bytes; 0, or -1 out of memory
+int32_t alt_parse(const char *buf, int32_t n, GPTR(AltBucket) *out);
+// @0x63685b25 stdcall: the AltUnits stream into *out (n buckets), or 0 if the voice has none
+void alt_units_load(void *stg, const uint16_t *name, int32_t n, GPTR(AltRules) *out);
+// @0x636856db thiscall: the voice variant's records looked through (nothing is kept)
+void unit_voice_scan(UnitStage *u, int32_t voice, int32_t variant);
+// @0x63685471 thiscall: the unit stage from the voice file (VcHeader, PhoneFile, TreeImage, Senone,
+// AltUnits); 1
+int32_t unit_init(UnitStage *u, uint8_t *qin, uint8_t *qout, void *stg, const uint8_t *voice, int32_t voice_idx,
+                  int32_t variant, uint32_t hwnd, uint32_t msg);
+// not decompiled yet (harness/guest.c): the older tree format's loader (0x636727fd)
+int32_t senone_tree_load_old(void *stg, const char *name, const void *ps, GPTR(SenoneTree) *out);
 // @0x63685c20 stdcall: the next rule of key[0]'s bucket at or after *pos that matches key (and the
 // senone context around position i); its unit id is proposed for the covered positions. 1 = found
 // (*pos after it), 0 = no more.

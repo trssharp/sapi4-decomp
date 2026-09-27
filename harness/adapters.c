@@ -755,3 +755,17 @@ void hk_senone_tree_load(Emu *e, X86 *c) {
     E_RET((uint32_t)senone_tree_load(GPH(uint8_t, A(0), 4), GSTR(A(1)), GPH(PhoneSet, A(2), sizeof(PhoneSet)), GPH(uint32_t, A(3), 4)));
 }
 void hk_senone_tree_load2(Emu *e, X86 *c) { hk_senone_tree_load(e, c); }
+void hk_alt_arg(Emu *e, X86 *c) {
+    uint32_t *pp = GPH(uint32_t, A(1), 4);
+    const char *p = GP(const char, *pp);
+    alt_arg(AI(0), &p, GPH(uint8_t, A(2), 1), GPH(uint32_t, A(3), 4));
+    *pp = host_to_guest(p);
+    E_RET(0);
+}
+void hk_alt_parse(Emu *e, X86 *c) { E_RET((uint32_t)alt_parse(GSTR(A(0)), AI(1), GPH(uint32_t, A(2), 4))); }
+void hk_alt_units_load(Emu *e, X86 *c) { alt_units_load(GPH(uint8_t, A(0), 4), GPH(uint16_t, A(1), 2), AI(2), GPH(uint32_t, A(3), 4)); }
+void hk_unit_voice_scan(Emu *e, X86 *c) { unit_voice_scan(THIS(UnitStage), AI(0), AI(1)); }
+void hk_unit_init(Emu *e, X86 *c) {
+    E_RET((uint32_t)unit_init(THIS(UnitStage), GPH(uint8_t, A(0), 0x40), GPH(uint8_t, A(1), 0x40), GPH(uint8_t, A(2), 4),
+                              GPH(uint8_t, A(3), 0x8f8), AI(4), AI(5), A(6), A(7)));
+}

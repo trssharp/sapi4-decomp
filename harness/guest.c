@@ -117,3 +117,8 @@ void pros_alt_d(GPTR(float) *tmp, Prosody *p) {
 }
 
 int32_t user_lex_load(UserLex *t) { uint32_t a[1] = { host_to_guest_ptr(t) }; return (int32_t)guest_call(0x636751e0, 1, a); }
+
+int32_t senone_tree_load_old(void *stg, const char *name, const void *ps, GPTR(SenoneTree) *out) {
+    uint32_t a[4] = { host_to_guest_ptr(stg), host_to_guest_ptr(name), host_to_guest_ptr(ps), host_to_guest_ptr(out) };
+    return (int32_t)guest_call(0x636727fd, 4, a);
+}
