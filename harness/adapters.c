@@ -230,3 +230,4 @@ void hk_unit_prosody(Emu *e, X86 *c) {
                        AI(3), GPH(UnitOutBuf, A(4), sizeof(UnitOutBuf))));
 }
 void hk_unit_prosody_a(Emu *e, X86 *c) { unit_prosody_a(THIS(UnitStage), AI(0)); }
+void hk_unit_prosody_b(Emu *e, X86 *c) { unit_prosody_b(THIS(UnitStage), AI(0)); }

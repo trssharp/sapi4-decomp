@@ -525,12 +525,29 @@ static void t_prosody(int iter) {
         if (r[i].nstates && rnd() % 2) r[i].a[0] = 0.0f;
         if (r[i].nstates && rnd() % 2) r[i].a[r[i].nstates - 1] = 1.0f;
     }
-    reg_add(gu, sizeof(UnitStage)); reg_add(gr, sizeof(UnitRec) * (n + 1));
+    u->last_c = (iter & 2) ? -1.0f : (float)rndi(1, 50) * 0.5f;
+    for (int i = 0; i < n; i++) for (int k = 0; k < r[i].nstates; k++) if (rnd() % 3) r[i].c[k] = 0.0f;
     uint32_t a[1] = { (uint32_t)n };
-    emu_set_insn_budget(E, 50000000);
+    // pass B runs after pass A in the engine (A inserts the boundary states B relies on): normalise
+    // the random phrase with the original A first, on a copy
+    uint32_t gr2 = galloc(sizeof(UnitRec) * (n + 1)), gu2 = galloc(sizeof(UnitStage));
+    memcpy(gp(gr2, sizeof(UnitRec) * (n + 1)), r, sizeof(UnitRec) * (n + 1));
+    memcpy(gp(gu2, sizeof(UnitStage)), u, sizeof(UnitStage));
+    ((UnitStage *)gp(gu2, sizeof(UnitStage)))->recs = gr2;
+    emu_set_insn_budget(E, 20000000);
+    thiscall(0x63686c7d, gu2, 1, a);
+    emu_set_insn_budget(E, 0);
+    if (emu_failed(E)) { fprintf(stderr, "prosody case %d: original A did not finish\n", iter); exit(1); }
+    reg_add(gu2, sizeof(UnitStage)); reg_add(gr2, sizeof(UnitRec) * (n + 1));
+    thiscall(0x63686905, gu2, 1, a);
+    reg_save();
+    unit_prosody_b(gp(gu2, sizeof(UnitStage)), n);
+    reg_check("unit_prosody_b", iter);
+    // pass A on the untouched random phrase
+    reg_add(gu, sizeof(UnitStage)); reg_add(gr, sizeof(UnitRec) * (n + 1));
+    emu_set_insn_budget(E, 20000000);
     thiscall(0x63686c7d, gu, 1, a);
     emu_set_insn_budget(E, 0);
-    if (emu_failed(E)) { fprintf(stderr, "prosody case %d: original faulted/hung, skipped\n", iter); exit(1); }
     reg_save();
     unit_prosody_a(gp(gu, sizeof(UnitStage)), n);
     reg_check("unit_prosody_a", iter);

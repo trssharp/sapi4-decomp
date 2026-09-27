@@ -309,3 +309,129 @@ end:
     R = GP(UnitRec, u->recs);
     if (u->sil_phone == R[n - 1].phone) u->last_b = -1;
 }
+
+// @0x63686905: the same interpolation for the c[] targets (no states are inserted here); the value
+// carried across phrases is a float (110 when there is none).
+void unit_prosody_b(UnitStage *u, int n) {
+    UnitRec *R;
+    const double Z = 0.0;
+    float a18 = 0.0f, T30 = 0.0f, T4, Tc, bval, last;
+    int i = 0, s = 0, cur = 0, carry = 0, last_i = n - 1;
+    int found, i_end, s_end, j, lim, found2, i2;
+    double t = 0.0;
+top:
+    R = GP(UnitRec, u->recs);
+    if (i < last_i) goto a;
+    if (i != last_i) goto end;
+    if (s < R[n - 1].nstates) goto a;
+    if (R[n - 1].nstates > 1) goto end;
+a:
+    found = 0;
+    T30 = (float)t;
+    if (i >= n) goto b;
+    for (;;) {
+        if (s < R[i].nstates) {
+            for (;;) {
+                if (!x87_je(R[i].c[s], Z)) { found = 1; break; }
+                s++;
+                if (s >= R[i].nstates) break;
+            }
+        }
+        if (found) goto f;
+        if (i + 1 != n) s = 0;
+        t = t + R[i].dur;
+        i++;
+        if (i >= n) break;
+    }
+b:
+    if (!found) goto g;
+f: {
+        double v;
+        if (!x87_je(Z, R[i].a[s])) {
+            v = (double)R[i].dur * R[i].a[s];
+            T4 = (float)(v + t);
+        } else if (i == 0) {
+            T4 = (float)t;
+        } else {
+            if (R[i - 1].nstates == 0) v = R[i - 1].dur;
+            else v = (double)R[i - 1].a[R[i - 1].nstates - 1] * R[i - 1].dur;
+            T4 = (float)(v + t);
+        }
+        bval = R[i].c[s];
+        if (x87_je(-1.0, u->last_c)) u->last_c = R[i].c[s];
+        goto m;
+    }
+g:
+    T4 = (float)t;
+    if (x87_je(u->last_c, -1.0)) u->last_c = 110.0f;
+    bval = u->last_c;
+    i = last_i;
+    s = R[last_i].nstates;
+m:
+    t = T30;
+    i_end = i;
+    Tc = T30;
+    s_end = s;
+    last = -1.0f;
+    j = cur;
+    if (cur > i_end) goto nn;
+    for (;;) {
+        R = GP(UnitRec, u->recs);
+        UnitRec *r = R + j;
+        lim = j == i_end ? s_end : r->nstates;
+        int eax = carry;
+        if (carry < lim) {
+            for (int k = carry, cnt = lim - carry; cnt; k++, cnt--) {
+                if (!x87_je(Z, r->c[k])) {
+#ifdef DECOMP_HOOK
+                    decomp_warn("unit_prosody_b: a specified c[] inside an interpolated stretch (the original calls DebugBreak)");
+#endif
+                    t = Tc;
+                    continue;
+                }
+                double P0 = (double)u->last_c;
+                double q = ((double)r->dur * r->a[k] + t - a18) * ((double)bval - P0);
+                r->c[k] = (float)(q / ((double)T4 - a18) + P0);
+                last = r->c[k];
+            }
+            eax = lim;
+        }
+        carry = 0;
+        if (eax == r->nstates) {
+            double x = (double)r->dur + t;
+            Tc = (float)x;
+            t = x;
+        }
+        j++;
+        if (j > i_end) break;
+    }
+nn:
+    if (!x87_je(-1.0, last)) u->last_c = last;
+    s = s_end;
+    found2 = 1;
+    i2 = i_end;
+    R = GP(UnitRec, u->recs);
+    while (i2 < n) {
+        UnitRec *r = R + i2;
+        int nst = r->nstates;
+        if (nst == 0 || !x87_je(Z, r->a[0])) break;
+        while (s < nst) {
+            if (x87_je(Z, r->c[s])) { found2 = 0; break; }
+            u->last_c = r->c[s];
+            s++;
+            a18 = (float)((double)r->dur * r->a[s - 1] + t);
+        }
+        if (!found2) break;
+        if (!x87_je(1.0, r->a[s - 1])) break;
+        i2++;
+        if (i2 != n) s = 0;
+        t = t + r->dur;
+    }
+    cur = i2;
+    carry = s;
+    i = i2;
+    goto top;
+end:
+    R = GP(UnitRec, u->recs);
+    if (u->sil_phone == R[n - 1].phone) u->last_c = -1.0f;
+}
