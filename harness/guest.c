@@ -9,6 +9,7 @@
 #include "fe_vm.h"
 #include "fe_input.h"
 #include "fe_phones.h"
+#include "fe_init.h"
 #include <string.h>
 
 static uint32_t guest_call(uint32_t pref, int nargs, const uint32_t *args) {
@@ -114,3 +115,5 @@ void pros_alt_d(GPTR(float) *tmp, Prosody *p) {
     memcpy(tmp, decomp_guest_mem + g, 4);
     c->s.r[ESP] = sp;
 }
+
+int32_t user_lex_load(UserLex *t) { uint32_t a[1] = { host_to_guest_ptr(t) }; return (int32_t)guest_call(0x636751e0, 1, a); }

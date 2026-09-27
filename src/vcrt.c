@@ -187,3 +187,21 @@ int vc_scan_eq_int(const char *s, int32_t *v) {
     return 1;
 }
 
+
+char *vc_strtok(char *s, const char *delim) {
+    static _Thread_local char *next;
+    if (!s) s = next;
+    if (!s) return NULL;
+    s += strspn(s, delim);
+    if (!*s) {
+        next = NULL;
+        return NULL;
+    }
+    char *tok = s;
+    s += strcspn(s, delim);
+    if (*s) {
+        *s = 0;
+        next = s + 1;
+    } else next = NULL;
+    return tok;
+}

@@ -35,6 +35,10 @@ void decomp_warn(const char *msg);
 // build gets trivial versions.
 void vc_EnterCriticalSection(void *cs);
 void vc_LeaveCriticalSection(void *cs);
+// CreateEventA(NULL, manual, initial, NULL) / InitializeCriticalSection; a portable build keeps events
+// in a small table (and critical sections are nothing)
+uint32_t vc_CreateEventA(int32_t manual, int32_t initial);
+void vc_InitializeCriticalSection(void *cs);
 int32_t vc_SetEvent(uint32_t h);
 int32_t vc_ResetEvent(uint32_t h);
 uint32_t vc_WaitForSingleObject(uint32_t h, uint32_t ms);

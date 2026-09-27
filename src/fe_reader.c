@@ -20,6 +20,10 @@ LAYOUT(Prosody, phone_dur, 0x7910);
 LAYOUT(Prosody, recs, 0xf614);
 LAYOUT(Prosody, pitch_hz, 0xf620);
 LAYOUT(Prosody, mode, 0xfb40);
+LAYOUT(Prosody, nalt, 0xf610);
+LAYOUT(Prosody, alt_tab, 0xf628);
+LAYOUT(Prosody, nalt_tab, 0xfb3c);
+LAYOUT(UserLex, cap, 8);
 LAYOUT(UserLex, entries, 4);
 
 // ------------------------------------------------------------------ the reader's state

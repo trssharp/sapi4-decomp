@@ -13,6 +13,8 @@ typedef struct LexEntry {
 typedef struct UserLex {
     int32_t count;
     GPTR(GPTR(LexEntry)) entries;   // 0x04
+    int32_t cap;                    // 0x08
+    int32_t _0c;
 } UserLex;
 
 // the phrase being turned into phones (part of WordInput)
@@ -31,12 +33,15 @@ typedef struct Prosody {
     char phone_chars[1000];     // 0x6588
     int32_t phone_end[1000];    // 0x6970 cumulative duration at each phone's end
     int32_t phone_dur[1000];    // 0x7910
-    uint8_t _88b0[0xf614 - 0x88b0];
+    GPTR(uint8_t) alt[7000];    // 0x88b0 the alternative prosody's data records (0x340 bytes each)
+    int32_t nalt;               // 0xf610
     GPTR(uint8_t) recs;         // 0xf614 records of 0x340 bytes (each with a malloc'd pointer at +0x14)
     int32_t nrecs;              // 0xf618
     int32_t npitch;             // 0xf61c
     int32_t pitch_hz;           // 0xf620
-    uint8_t _f624[0xfb40 - 0xf624];
+    int32_t f624;               // 0xf624
+    struct { char name[0x24]; int32_t v[4]; } alt_tab[25];   // 0xf628 the alternative prosody's table
+    int32_t nalt_tab;           // 0xfb3c
     int32_t mode;               // 0xfb40 0: the alternative prosody (not decompiled)
 } Prosody;
 

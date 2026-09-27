@@ -11,6 +11,7 @@
 #include "fe_input.h"
 #include "fe_reader.h"
 #include "fe_phones.h"
+#include "fe_init.h"
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -686,3 +687,31 @@ void hk_calloc_n(Emu *e, X86 *c) { E_RET(host_to_guest(calloc_n(A(0), A(1)))); }
 void hk_fe_set_pitch_level(Emu *e, X86 *c) { E_RET((uint32_t)fe_set_pitch_level(THIS(FrontEnd), (uint16_t)A(0))); }
 void hk_fe_phrase_out(Emu *e, X86 *c) { E_RET((uint32_t)fe_phrase_out(THIS(FrontEnd), AI(0))); }
 void hk_fe_thread(Emu *e, X86 *c) { E_RET((uint32_t)fe_thread(THIS(FrontEnd))); }
+
+// ------------------------------------------------------------------ front end set-up (fe_init.c)
+void hk_text_init(Emu *e, X86 *c) { E_RET((uint32_t)text_init(A(0), A(1) ? GSTR(A(1)) : NULL, A(2))); }
+void hk_fe_once(Emu *e, X86 *c) { fe_once(); }
+void hk_ev_list_init(Emu *e, X86 *c) { ev_list_init(WOBJ(A(0))); }
+void hk_word_obj_init(Emu *e, X86 *c) { E_RET((uint32_t)word_obj_init(WOBJ(A(0)))); }
+void hk_word_obj_create(Emu *e, X86 *c) { E_RET((uint32_t)word_obj_create()); }
+void hk_word_set_mask(Emu *e, X86 *c) { E_RET((uint32_t)word_set_mask(A(0) ? WOBJ(A(0)) : NULL, (uint8_t)A(1))); }
+void hk_word_set_events(Emu *e, X86 *c) { E_RET((uint32_t)word_set_events(AI(0), AI(1))); }
+void hk_word_set_mode(Emu *e, X86 *c) { E_RET((uint32_t)word_set_mode(AI(0), AI(1))); }
+void hk_word_set_rate(Emu *e, X86 *c) { E_RET((uint32_t)word_set_rate(AI(0), AI(1))); }
+void hk_user_lex_builtin(Emu *e, X86 *c) { user_lex_builtin(GPH(uint32_t, A(0), 4)); }
+void hk_user_lex_file(Emu *e, X86 *c) { user_lex_file(GPH(uint32_t, A(0), 4)); }
+void hk_at_end(Emu *e, X86 *c) { E_RET((uint32_t)at_end(GSTR(A(0)))); }
+void hk_read_line(Emu *e, X86 *c) {
+    uint32_t *pp = GPH(uint32_t, A(2), 4);
+    char *p = GP(char, *pp);
+    read_line(GSTR(A(0)), AI(1), &p);
+    *pp = host_to_guest(p);
+}
+void hk_words_set_f624(Emu *e, X86 *c) { words_set_f624(AI(0), AI(1)); }
+void hk_words_open(Emu *e, X86 *c) { E_RET((uint32_t)words_open(AI(0), A(1) ? GSTR(A(1)) : NULL)); }
+void hk_fe_entries_init(Emu *e, X86 *c) { fe_entries_init(THIS(FrontEnd)); E_RET(0); }
+void hk_fe_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(fe_ctor(THIS(FrontEnd)))); }
+void hk_fe_setup(Emu *e, X86 *c) {
+    E_RET((uint32_t)fe_setup(THIS(FrontEnd), GPH(uint8_t, A(0), 0x40), GPH(uint8_t, A(1), 0x40), GPH(uint8_t, A(2), 0x8da),
+                             AI(3), AI(4), AI(5), A(6), A(7), AI(8)));
+}

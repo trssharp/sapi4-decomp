@@ -74,3 +74,5 @@ int32_t vc_com_call(void *p, int slot, int nargs, const uint32_t *args) {
 }
 int32_t vc_CoInitialize(void) { uint32_t a[1] = { 0 }; return (int32_t)api(0x6369e21c, 1, a); }
 void vc_CoUninitialize(void) { api(0x6369e220, 0, NULL); }
+uint32_t vc_CreateEventA(int32_t manual, int32_t initial) { uint32_t a[4] = { 0, (uint32_t)manual, (uint32_t)initial, 0 }; return api(0x6369e07c, 4, a); }
+void vc_InitializeCriticalSection(void *cs) { uint32_t a[1] = { g(cs) }; api(0x6369e054, 1, a); }

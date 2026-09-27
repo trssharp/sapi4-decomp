@@ -22,7 +22,7 @@ typedef struct FrontEnd {
     int32_t last;           // 0x14 index of the last entry, -1 when none
     uint32_t _18;
     int32_t nindex;         // 0x1c index escapes seen in the part just read
-    uint32_t _20;
+    uint32_t _20;           // 0x20 the shared word module index (0x63738bd0)
     int32_t words;          // 0x24 the word module's voice index
     int32_t f28;            // 0x28 where the word module stopped (offset from cur)
     int32_t f2c;            // 0x2c its last character
@@ -36,7 +36,7 @@ typedef struct FrontEnd {
     int32_t voice;          // 0x4c
     int32_t f50;            // 0x50 < 0: a voice variant to check (negated)
     int32_t in_tp;          // 0x54 inside a "\Tp" tag's text (its phones replaced)
-    uint32_t _58[6];
+    uint8_t cs[0x18];       // 0x58 CRITICAL_SECTION
     uint32_t abort_event;   // 0x70 set: drop what is being spoken
     uint32_t done_event;    // 0x74 set when the thread ends
     GPTR(uint8_t) queue_in; // 0x78 the text queue (queue.h)
