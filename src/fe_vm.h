@@ -88,12 +88,26 @@ typedef struct RuleHdr {
     uint8_t applied;        // 0x293
     GPTR(char) tape;        // 0x294 the current tape after trying it
 } RuleHdr;
-// @0x6368d966 and copies (not decompiled yet): match the rule's input at position `at`; the match end
-// (0: no match). `len` is passed in EAX's low half by the caller.
-int16_t vm_match(int inst, int32_t at, uint32_t len);
 // @0x6368f187 and copies (not decompiled yet): apply the rule's output; AL = success
 uint8_t vm_apply(int inst, int32_t a0, RuleHdr *r);
 // @0x6368d896 / 0x636918d6 / 0x63694e1a: try one rule at position a1: match, run the left context
 // backwards and the right context forwards, then apply. AL = 1 if applied. prev_eax is the caller's EAX
 // (its upper half shows in the result and in what is passed on).
 uint32_t vm_try(int inst, int32_t a0, int32_t a1, RuleHdr *r, uint32_t prev_eax);
+
+// the rule matcher's own globals (per instance; the rest are the condition interpreter's)
+typedef struct MatchVM {
+    uint32_t adv;           // int16 (RunVM.pos0): nonzero = skip 0x7e filler before reading a character
+    uint32_t valtab;        // per class and character: a value (class test 0xf8 stores it in `out`)
+    uint32_t out;           // byte
+    uint32_t last;          // int16: the last position a repeated test matched
+    uint32_t maxcnt;        // int16: the repeat limit of the current repetition
+    uint32_t clsb;          // byte: the class / literal of the current repetition
+    uint32_t saved;         // the previous tape (the matcher's own copy)
+} MatchVM;
+extern const MatchVM match_vm[3];
+// @0x6368d966 / 0x63691990 / 0x63694ed7: match the rule's input pattern at *pc against the current
+// tape from position `at` (literals, classes, variables, tape switches, repetitions with a minimum
+// and a maximum, embedded conditions). Returns the position after the match, 0 if it fails. `back` is
+// where opcode 0xeb resumes (the caller passes the rule's input length).
+int16_t vm_match(int inst, int32_t at, int32_t back);

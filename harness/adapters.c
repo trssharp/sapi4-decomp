@@ -359,3 +359,6 @@ void hk_vm_run_2(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | vm_run(2)); }
 void hk_vm_try_0(Emu *e, X86 *c) { E_RET(vm_try(0, AI(0), AI(1), GPH(RuleHdr, A(2), sizeof(RuleHdr)), c->s.r[EAX])); }
 void hk_vm_try_1(Emu *e, X86 *c) { E_RET(vm_try(1, AI(0), AI(1), GPH(RuleHdr, A(2), sizeof(RuleHdr)), c->s.r[EAX])); }
 void hk_vm_try_2(Emu *e, X86 *c) { E_RET(vm_try(2, AI(0), AI(1), GPH(RuleHdr, A(2), sizeof(RuleHdr)), c->s.r[EAX])); }
+void hk_vm_match_0(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)vm_match(0, AI(0), AI(1))); }
+void hk_vm_match_1(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)vm_match(1, AI(0), AI(1))); }
+void hk_vm_match_2(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)vm_match(2, AI(0), AI(1))); }

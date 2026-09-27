@@ -83,11 +83,6 @@ uint8_t vm_exec(int inst) {
     return (uint8_t)guest_call(fn[inst], 0, NULL);
 }
 
-int16_t vm_match(int inst, int32_t at, uint32_t len) {
-    static const uint32_t fn[3] = { 0x6368d966, 0x63691990, 0x63694ed7 };
-    uint32_t a[2] = { (uint32_t)at, len };
-    return (int16_t)guest_call(fn[inst], 2, a);
-}
 uint8_t vm_apply(int inst, int32_t a0, RuleHdr *r) {
     static const uint32_t fn[3] = { 0x6368f187, 0x636931b1, 0x636966f8 };
     uint32_t a[2] = { (uint32_t)a0, host_to_guest_ptr(r) };
