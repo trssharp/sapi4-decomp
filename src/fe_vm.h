@@ -50,3 +50,26 @@ extern const CondVM cond_vm[3];
 // left at it); the rest of EAX is the pc, as in the original. Opcodes outside 0xea..0xfd, and
 // 0xeb-0xed / 0xf4-0xf8, make the original loop forever; they never occur in the rules.
 uint32_t vm_cond(const CondVM *vm, uint8_t end, int32_t pos);
+
+// the rule runner's globals (per instance): a choice-point stack for backtracking over alternatives
+typedef struct RunVM {
+    uint32_t step;          // int16: position advance per executed rule
+    uint32_t pc;            // the bytecode pointer global
+    uint32_t nch;           // int16: choice points on the stack
+    uint32_t pos0;          // int16
+    uint32_t flag;          // byte
+    uint32_t pos;           // int16: current position
+    uint32_t tries;         // uint8[]: per choice point, how many alternatives were tried
+    uint32_t cpos;          // int16[]: saved pos
+    uint32_t cpc;           // ptr[]: saved pc
+    uint32_t ctape;         // ptr[]: saved current tape
+    uint32_t cpos0;         // int16[]: saved pos0
+    uint32_t ckind;         // int16[]: 0xf5 retry once, 0xf6 next alternative block, 0xf7 bounded retry
+    uint32_t cur;           // the current tape global (as in CondVM)
+} RunVM;
+extern const RunVM run_vm[3];
+// @0x6368e53d and copies (not decompiled yet): execute one rule; AL = success
+uint8_t vm_exec(int inst);
+// @0x6368e30f and copies: run the rule list at pc+1 up to 0xff, backtracking through the choice
+// points on failure; AL = 1 if it ran through
+uint8_t vm_run(int inst);

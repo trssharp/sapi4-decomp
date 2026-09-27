@@ -6,6 +6,7 @@
 #include "unitsel.h"
 #include "containers.h"
 #include "voice.h"
+#include "fe_vm.h"
 #include <string.h>
 
 static uint32_t guest_call(uint32_t pref, int nargs, const uint32_t *args) {
@@ -75,4 +76,9 @@ void voc_init(VocEngine *v, int32_t style) {
 void voc_resample_flush(uint32_t obj, uint32_t method) {
     emu_cpu(decomp_emu)->s.r[ECX] = obj;
     guest_call(method, 0, NULL);
+}
+
+uint8_t vm_exec(int inst) {
+    static const uint32_t fn[3] = { 0x6368e53d, 0x63692568, 0x63695aaf };
+    return (uint8_t)guest_call(fn[inst], 0, NULL);
 }

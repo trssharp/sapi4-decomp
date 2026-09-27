@@ -171,3 +171,71 @@ uint32_t vm_cond(const CondVM *vm, uint8_t end, int32_t pos) {
     }
 #undef RET
 }
+
+const RunVM run_vm[3] = {
+    { 0x63738ce8, 0x637392e0, 0x6373924c, 0x63738cb8, 0x63738cd0, 0x63738cbc, 0x63739250, 0x63739340,
+      0x63739288, 0x637392e8, 0x63739220, 0x63739370, 0x6373927c },
+    { 0x637393cc, 0x637394a8, 0x63739424, 0x637393ac, 0x637393b8, 0x637393b0, 0x63739428, 0x63739508,
+      0x63739450, 0x637394b0, 0x637393f8, 0x63739538, 0x63739448 },
+    { 0x637395b0, 0x63739688, 0x63739604, 0x63739574, 0x63739580, 0x63739578, 0x63739608, 0x637396e8,
+      0x63739630, 0x63739690, 0x637395d8, 0x63739718, 0x63739628 },
+};
+
+uint8_t vm_run(int inst) {
+    const RunVM *vm = &run_vm[inst];
+    int16_t *step = DLLVAR(int16_t, vm->step), *nch = DLLVAR(int16_t, vm->nch);
+    int16_t *pos0 = DLLVAR(int16_t, vm->pos0), *pos = DLLVAR(int16_t, vm->pos);
+    GPTR(uint8_t) *pc = DLLVAR(GPTR(uint8_t), vm->pc);
+#define PCP GP(uint8_t, *pc)
+    int16_t s = *step;
+    GPSET(*pc, PCP + 1);
+    *nch = 0;
+    uint8_t ok = 1;
+    *pos0 = s;
+    *DLLVAR(uint8_t, vm->flag) = 1;
+run:        // (the original has four copies of this loop; they behave the same)
+    while (*PCP != 0xff) {
+        if (!ok) goto backtrack;
+        ok = vm_exec(inst);
+        GPSET(*pc, PCP + 1);
+        *pos = (int16_t)(*pos + *step);
+    }
+check:
+    if (ok) return ok;
+backtrack: {
+        int16_t n = *nch;
+        if (n <= 0) return ok;      // (ok is 0 here)
+        uint8_t t = ++DLLVAR(uint8_t, vm->tries)[n];
+        *pos = DLLVAR(int16_t, vm->cpos)[n];
+        const uint8_t *at = GP(const uint8_t, DLLVAR(GPTR(uint8_t), vm->cpc)[n]);
+        *pos0 = DLLVAR(int16_t, vm->cpos0)[n];
+        *pc = DLLVAR(GPTR(uint8_t), vm->cpc)[n];
+        *DLLVAR(GPTR(char), vm->cur) = DLLVAR(GPTR(char), vm->ctape)[n];
+        switch (DLLVAR(int16_t, vm->ckind)[n]) {
+        case 0xf5:
+            (*nch)--;
+            ok = 1;
+            goto run;
+        case 0xf6:
+            if (!(uint8_t)vm_skip_block(&rule_vm[inst], 0xf6, t)) {
+                GPSET(*pc, PCP + 2);
+                (*nch)--;
+                goto check;
+            }
+            GPSET(*pc, PCP + 2);
+            ok = 1;
+            goto run;
+        case 0xf7:
+            if (t > at[2]) {
+                (*nch)--;
+                goto check;
+            }
+            *DLLVAR(uint8_t, vm->flag) = 0;
+            ok = 1;
+            goto run;
+        default:
+            goto check;             // (the same choice point again: never happens in the rules)
+        }
+    }
+#undef PCP
+}
