@@ -468,3 +468,16 @@ char *str_dup0(const char *s) {
     strcpy(p, s);
     return p;
 }
+
+// the phone list as text, the floats exactly (for comparing builds; not part of the engine)
+void phones_print(FILE *f, const PhoneIn *ph, int32_t n) {
+    fprintf(f, "phrase %d\n", n);
+    for (int32_t i = 0; i < n; i++) {
+        const PhoneIn *p = &ph[i];
+        fprintf(f, "%-15.15s %a %d", p->name, (double)p->dur, p->nstates);
+        for (int k = 0; k < 5; k++) fprintf(f, " %a", (double)p->a[k]);
+        for (int k = 0; k < 5; k++) fprintf(f, " %a", (double)p->b[k]);
+        for (int k = 0; k < 5; k++) fprintf(f, " %a", (double)p->c[k]);
+        fprintf(f, "\n");
+    }
+}

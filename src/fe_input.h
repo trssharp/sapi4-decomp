@@ -4,6 +4,7 @@
 #pragma once
 #include "gptr.h"
 #include "fe_reader.h"
+#include "queue.h"
 
 // one numbered entry (an escape "\x1bN<index> " in the text refers to it)
 typedef struct FeEntry {
@@ -78,6 +79,16 @@ int32_t fe_set_pitch_level(FrontEnd *fe, uint16_t v);                   // @0x63
 // into tag records, "\Tp" pronunciations through the phone converter; queued
 int32_t fe_phrase_out(FrontEnd *fe, int32_t n);
 int32_t fe_thread(FrontEnd *fe);                                        // @0x63684233 thiscall
+// the thread's frame (as the original's: the index escape's argument runs into the handles after it)
+typedef struct FeThreadFrame {
+    QItem item;             // -0x34
+    char arg[0xc];          // -0x20
+    uint32_t h[2];          // -0x14 abort, text queue not empty
+    uint32_t h2[2];         // -0x0c abort, room in the output queue
+    int32_t res;            // -0x04
+} FeThreadFrame;
+// fe_thread's work on one text item (split out so that a single-threaded driver can use it)
+void fe_text_item(FrontEnd *fe, FeThreadFrame *f);
 int32_t tag_char_value(const char *name);                               // @0x63680ecd stdcall
 void fe_voice_flags(FrontEnd *fe, int32_t v);                           // @0x63683653 thiscall
 int32_t fe_text_end(FrontEnd *fe);                                      // @0x63683765 thiscall

@@ -121,7 +121,7 @@ int32_t word_set_rate(int32_t idx, int32_t v) {
 void user_lex_builtin(GPTR(UserLex) *out) {
     vc_EnterCriticalSection(CS);
     if (*DLLVAR(int32_t, 0x63738518) == 0) {
-        UserLex *t = vc_malloc(0x10);
+        UserLex *t = vc_malloc(sizeof(UserLex));
         GPSET(*out, t);
         t->_0c = 0;
         t->count = *DLLVAR(int32_t, 0x6371d780);
@@ -144,7 +144,7 @@ void user_lex_builtin(GPTR(UserLex) *out) {
 void user_lex_file(GPTR(UserLex) *out) {
     vc_EnterCriticalSection(CS);
     if (*DLLVAR(int32_t, 0x63738514) == 0) {
-        UserLex *t = vc_malloc(0x10);
+        UserLex *t = vc_malloc(sizeof(UserLex));
         GPSET(*out, t);
         t->_0c = 0;
         t->count = 0;
@@ -263,7 +263,7 @@ int32_t words_open(int32_t mode, char *data) {
 
 void fe_entries_init(FrontEnd *fe) {
     fe->cap = 0x32;
-    FeEntry *e = vc_malloc(0x258);
+    FeEntry *e = vc_malloc((size_t)(uint32_t)fe->cap * sizeof(FeEntry));
     fe->last = -1;
     GPSET(fe->entries, e);
     e[fe->cap - 1].pos = 2000000000;

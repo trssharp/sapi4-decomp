@@ -12,6 +12,7 @@
 #include "fe_reader.h"
 #include "fe_phones.h"
 #include "fe_init.h"
+static FILE *trace_file(void);
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -27,6 +28,8 @@
 #include "queue.h"
 #include "fe_vm.h"
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define A(i) x86_arg(c, (i))
 #define AI(i) ((int32_t)x86_arg(c, (i)))
@@ -317,7 +320,23 @@ void hk_unit_reset_rate(Emu *e, X86 *c) { E_RET(unit_reset_rate(THIS(UnitStage))
 void hk_unit_set_amp(Emu *e, X86 *c) { E_RET(unit_set_amp(THIS(UnitStage), A(0))); }
 
 void hk_unit_send(Emu *e, X86 *c) { unit_send(THIS(UnitStage), GPH(UnitOutBuf, A(0), sizeof(UnitOutBuf))); }
-void hk_unit_phrase(Emu *e, X86 *c) { E_RET(unit_phrase(THIS(UnitStage), (PhoneIn *)(void *)x86_ptr(c, A(0), 1), AI(1))); }
+// SAPI4_TRACE_PHONES=file: the phone lists the unit stage receives (to compare with port/fe.c)
+static FILE *trace_file(void) {
+    static FILE *f;
+    static int tried;
+    if (!tried) {
+        tried = 1;
+        const char *p = getenv("SAPI4_TRACE_PHONES");
+        if (p) f = fopen(p, "w");
+    }
+    return f;
+}
+void phones_print(FILE *f, const PhoneIn *ph, int32_t n);
+void hk_unit_phrase(Emu *e, X86 *c) {
+    PhoneIn *ph = (PhoneIn *)(void *)x86_ptr(c, A(0), 1);
+    if (trace_file()) phones_print(trace_file(), ph, AI(1));
+    E_RET(unit_phrase(THIS(UnitStage), ph, AI(1)));
+}
 void hk_unit_thread_loop(Emu *e, X86 *c) { E_RET(unit_thread_loop(THIS(UnitStage))); }
 void hk_unit_thread_proc(Emu *e, X86 *c) { E_RET(unit_thread_loop(GPH(UnitStage, A(0), sizeof(UnitStage)))); }
 
@@ -618,6 +637,7 @@ void hk_fe_tags_to_escapes(Emu *e, X86 *c) {
 }
 void hk_fe_set_text(Emu *e, X86 *c) { E_RET((uint32_t)fe_set_text(THIS(FrontEnd), GSTR(A(0)))); }
 void hk_fe_text_input(Emu *e, X86 *c) {
+    if (trace_file()) fprintf(trace_file(), "text tags %d mode %d\n", AI(2), AI(3));
     E_RET((uint32_t)fe_text_input(THIS(FrontEnd), GPH(uint16_t, A(0), 2), GPH(int32_t, A(1), 4), AI(2), AI(3)));
 }
 void hk_phonemes_to_names(Emu *e, X86 *c) { E_RET((uint32_t)phonemes_to_names(GPH(uint16_t, A(0), 2), GPH(uint32_t, A(1), 4), AI(2))); }
@@ -712,6 +732,9 @@ void hk_words_open(Emu *e, X86 *c) { E_RET((uint32_t)words_open(AI(0), A(1) ? GS
 void hk_fe_entries_init(Emu *e, X86 *c) { fe_entries_init(THIS(FrontEnd)); E_RET(0); }
 void hk_fe_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(fe_ctor(THIS(FrontEnd)))); }
 void hk_fe_setup(Emu *e, X86 *c) {
-    E_RET((uint32_t)fe_setup(THIS(FrontEnd), GPH(uint8_t, A(0), 0x40), GPH(uint8_t, A(1), 0x40), GPH(uint8_t, A(2), 0x8da),
+    FrontEnd *fe = THIS(FrontEnd);
+    E_RET((uint32_t)fe_setup(fe, GPH(uint8_t, A(0), 0x40), GPH(uint8_t, A(1), 0x40), GPH(uint8_t, A(2), 0x8da),
                              AI(3), AI(4), AI(5), A(6), A(7), AI(8)));
+    if (trace_file())
+        fprintf(trace_file(), "setup pitch %u f50 %d flags %x\n", *GPH(uint16_t, A(2) + 0x8d8, 2), AI(4), fe->flags);
 }

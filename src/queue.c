@@ -4,9 +4,10 @@
 #include <string.h>
 
 LAYOUT(Queue, ev_room, 0x3c);
+LAYOUT(QItem, bytes, 0x10);
 
 int queue_grow(Queue *q, uint32_t n) {
-    uint32_t size = (uint32_t)x87_ftol((double)n * 1.5) * 20u;
+    uint32_t size = (uint32_t)x87_ftol((double)n * 1.5) * (uint32_t)sizeof(QItem);
     if (size <= q->cap_bytes) return 1;
     if (q->items) {
         QItem *r = vc_realloc(GP(void, q->items), size);
@@ -88,7 +89,7 @@ int queue_pop(Queue *q, QItem *out) {
     }
     QItem *items = GP(QItem, q->items);
     *out = items[0];
-    memmove(items, items + 1, q->count * 20u - 20u);
+    memmove(items, items + 1, (q->count - 1) * (uint32_t)sizeof(QItem));
     q->count--;
     queue_update_events(q);
     vc_LeaveCriticalSection(q->cs);

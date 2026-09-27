@@ -285,9 +285,9 @@ int32_t fe_phrase_out(FrontEnd *fe, int32_t n) {
         }
     }
     vc_free(a);
-    QItem *it = vc_malloc(0x14);
+    QItem *it = vc_malloc(sizeof(QItem));
     if (!it) return 0;
-    memset(it, 0, 0x14);
+    memset(it, 0, sizeof(QItem));
     it->code = 3;
     it->bytes = (uint32_t)(count * 0x64);
     GPSET(it->data, (void *)b);
@@ -301,17 +301,76 @@ int32_t fe_phrase_out(FrontEnd *fe, int32_t n) {
     return 0;
 }
 
-// @0x63684233 thiscall: the front end's thread. Texts come in through the text queue; each is prepared,
-// read a part at a time by the word module, and every phrase's phone list goes to the output queue;
-// "\x1bI" escapes in the text change the pitch or end the text. The abort event drops everything.
+// one text (a code 1 item just taken from the text queue): prepared, then read a part at a time and
+// every phrase's phone list queued; "\x1bI" escapes in the text change the pitch or end the text
+void fe_text_item(FrontEnd *fe, FeThreadFrame *f) {
+    fe->single_char = 0;
+    if (locked_get_58(fe)) {
+        if (f->item.data) vc_free(GP(void, f->item.data));
+        return;
+    }
+    fe->in_tp = 0;
+    if (!f->item.data) return;
+    *DLLVAR(int32_t, 0x63738b80) = 1;
+    if (fe_text_input(fe, GP(const uint16_t, f->item.data), &f->res, (int32_t)f->item.a.value, (int32_t)f->item.v2) < 0)
+        return;
+    if (f->item.data) vc_free(GP(void, f->item.data));
+    f->item.data = 0;
+    for (;;) {
+        if (GP(char, fe->next) > GP(char, fe->text_last) + 1) {
+            vc_free(GP(char, fe->text));
+            return;
+        }
+        if (f->res != 0x6f) {
+            for (;;) {
+                int32_t n = words_phrase(fe->words);
+                if (vc_WaitForMultipleObjects(2, f->h2, 0, 0xffffffffu) == 0) {
+                    words_abort(fe->words);
+                    break;
+                }
+                fe_phrase_out(fe, n);
+                f->res = fe_continue(fe);
+                if (locked_get_58(fe)) break;
+                if (f->res == 0x6f) break;
+            }
+        }
+        // the next part: after an index escape "\x1bI<n> " (0: the end of the text, else a pitch)
+        char *nx = GP(char, fe->next);
+        if (nx >= GP(char, fe->text_last)) {
+            GPSET(fe->next, nx + 1);
+            continue;
+        }
+        nx += 2;
+        GPSET(fe->next, nx);
+        if (*nx != ' ') {
+            char *d = f->arg;
+            do {
+                *d = *nx;
+                d[1] = 0;
+                d++;
+                nx++;
+            } while (*nx != ' ');
+        }
+        GPSET(fe->next, nx + 1);
+        if (vc_lstrcmpA(f->arg, DLLVAR(const char, 0x6371da14)) == 0) fe_text_end(fe);     // "0"
+        else fe_set_pitch_level(fe, (uint16_t)vc_atoi(f->arg));
+        fe->cur = fe->next;
+        char *p = GP(char, fe->next);
+        while (p <= GP(char, fe->text_last)) {
+            if (*p == 0x1b && p[1] == 'I') break;
+            p++;
+            GPSET(fe->next, p);
+        }
+        *GP(char, fe->next) = 0;
+        int32_t r = words_feed(fe->words, GP(char, fe->cur), &fe->f28, &fe->f2c);
+        f->res = fe_after_feed(fe, r);
+    }
+}
+
+// @0x63684233 thiscall: the front end's thread: texts from the text queue, phone lists (and the other
+// items, passed on) to the output queue; the abort event drops everything
 int32_t fe_thread(FrontEnd *fe) {
-    struct {                    // (as the original's frame: the index escape's argument before the handles)
-        QItem item;             // -0x34
-        char arg[0xc];          // -0x20
-        uint32_t h[2];          // -0x14 abort, text queue
-        uint32_t h2[2];         // -0x0c abort, output queue
-        int32_t res;            // -0x04
-    } f;
+    FeThreadFrame f;
     vc_CoInitialize();
     f.h[0] = fe->abort_event;
     f.h2[0] = fe->abort_event;
@@ -326,67 +385,7 @@ int32_t fe_thread(FrontEnd *fe) {
             } else queue_push(GP(Queue, fe->queue), &f.item);
             continue;
         }
-        fe->single_char = 0;
-        if (locked_get_58(fe)) {
-            if (f.item.data) vc_free(GP(void, f.item.data));
-            continue;
-        }
-        fe->in_tp = 0;
-        if (!f.item.data) continue;
-        *DLLVAR(int32_t, 0x63738b80) = 1;
-        if (fe_text_input(fe, GP(const uint16_t, f.item.data), &f.res, (int32_t)f.item.a.value, (int32_t)f.item.v2) < 0)
-            continue;
-        if (f.item.data) vc_free(GP(void, f.item.data));
-        f.item.data = 0;
-        for (;;) {
-            if (GP(char, fe->next) > GP(char, fe->text_last) + 1) {
-                vc_free(GP(char, fe->text));
-                break;
-            }
-            if (f.res != 0x6f) {
-                for (;;) {
-                    int32_t n = words_phrase(fe->words);
-                    if (vc_WaitForMultipleObjects(2, f.h2, 0, 0xffffffffu) == 0) {
-                        words_abort(fe->words);
-                        break;
-                    }
-                    fe_phrase_out(fe, n);
-                    f.res = fe_continue(fe);
-                    if (locked_get_58(fe)) break;
-                    if (f.res == 0x6f) break;
-                }
-            }
-            // the next part: after an index escape "\x1bI<n> " (0: the end of the text, else a pitch)
-            char *nx = GP(char, fe->next);
-            if (nx >= GP(char, fe->text_last)) {
-                GPSET(fe->next, nx + 1);
-                continue;
-            }
-            nx += 2;
-            GPSET(fe->next, nx);
-            if (*nx != ' ') {
-                char *d = f.arg;
-                do {
-                    *d = *nx;
-                    d[1] = 0;
-                    d++;
-                    nx++;
-                } while (*nx != ' ');
-            }
-            GPSET(fe->next, nx + 1);
-            if (vc_lstrcmpA(f.arg, DLLVAR(const char, 0x6371da14)) == 0) fe_text_end(fe);     // "0"
-            else fe_set_pitch_level(fe, (uint16_t)vc_atoi(f.arg));
-            fe->cur = fe->next;
-            char *p = GP(char, fe->next);
-            while (p <= GP(char, fe->text_last)) {
-                if (*p == 0x1b && p[1] == 'I') break;
-                p++;
-                GPSET(fe->next, p);
-            }
-            *GP(char, fe->next) = 0;
-            int32_t r = words_feed(fe->words, GP(char, fe->cur), &fe->f28, &fe->f2c);
-            f.res = fe_after_feed(fe, r);
-        }
+        fe_text_item(fe, &f);
     }
     // aborted: drop the texts still queued
     while (queue_pop(GP(Queue, fe->queue_in), &f.item)) {

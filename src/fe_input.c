@@ -33,8 +33,8 @@ void fe_entries_clear(FrontEnd *fe) {
 static FeEntry *fe_entry_new(FrontEnd *fe) {
     fe->last++;
     if (fe->last == fe->cap - 1) {
-        FeEntry *n = vc_malloc((size_t)(uint32_t)(fe->cap * 24));
-        memcpy(n, GP(FeEntry, fe->entries), (size_t)(uint32_t)(fe->cap * 12));
+        FeEntry *n = vc_malloc((size_t)(uint32_t)fe->cap * 2 * sizeof(FeEntry));
+        memcpy(n, GP(FeEntry, fe->entries), (size_t)(uint32_t)fe->cap * sizeof(FeEntry));
         vc_free(GP(FeEntry, fe->entries));
         GPSET(fe->entries, n);
         fe->cap *= 2;
@@ -511,9 +511,9 @@ int32_t fe_after_feed(FrontEnd *fe, int32_t r) {
         }
         if (letter != 'N') continue;
         int32_t idx = vc_atoi(buf);
-        TagOut *t = vc_malloc(0x14);
+        TagOut *t = vc_malloc(sizeof(TagOut));
         if (!t) continue;
-        memset(t, 0, 0x14);
+        memset(t, 0, sizeof(TagOut));
         FeEntry *e = &GP(FeEntry, fe->entries)[idx];
         const char *fmt = NULL;
         switch (e->type) {
@@ -541,7 +541,13 @@ int32_t fe_after_feed(FrontEnd *fe, int32_t r) {
         }
         if (fmt) sprintf(buf, fmt, GP(const char, GP(FeEntry, fe->entries)[idx].text));
         tag_parse(buf, t);
-        queue_push(GP(Queue, fe->queue), (const QItem *)(const void *)t);
+        QItem q;        // (the same 20 bytes in the original; field by field for a portable build)
+        q.code = (uint32_t)t->code;
+        q.a.value = (uint32_t)t->value;
+        q.v2 = (uint32_t)t->_08;
+        q.data = t->text;
+        q.bytes = (uint32_t)t->text_bytes;
+        queue_push(GP(Queue, fe->queue), &q);
         vc_free(t);
     }
 }

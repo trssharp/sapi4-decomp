@@ -84,3 +84,22 @@ port-lex-baked-check: build/port_lex_baked port-lex-check
 	@./build/port_lex_baked < build/port_words.txt > build/port_lex_baked_out.txt
 	@if cmp -s build/port_lex_ref.txt build/port_lex_baked_out.txt; then echo "PORT-LEX (baked image): identical to the original"; else echo "PORT-LEX (baked): DIFFERENT"; exit 1; fi
 .PHONY: port-lex-baked-check
+
+# the portable front end: text to the unit stage's phone lists with the C alone, against the phone lists
+# the original front end produces in the emulator (golden texts, plain)
+PORTFE = $(PORTC) src/fe_small.c src/fe_word.c src/fe_phrase.c src/fe_output.c src/fe_text.c src/fe_lexer.c \
+	src/fe_split.c src/fe_input.c src/fe_reader.c src/fe_phones.c src/fe_out.c src/fe_init.c src/queue.c src/tags.c
+build/port_fe: port/fe.c port/dllimage.c port/dllimage.h $(PORTFE) $(wildcard src/*.h)
+	@mkdir -p build
+	$(PORTCC) -o $@ port/fe.c port/dllimage.c $(PORTFE) -lm
+port-fe-check: build/port_fe build/sapi4_speak
+	@./tools/port_fe_check.sh
+.PHONY: port-fe-check
+build/port_fe_baked: port/fe.c port/dllimage.c port/dllimage.h build/dlldata_gen.c $(PORTFE) $(wildcard src/*.h)
+	$(PORTCC) -O1 -DDLL_BAKED -o $@ port/fe.c port/dllimage.c build/dlldata_gen.c $(PORTFE) -lm
+port-fe-baked-check: build/port_fe_baked build/port_fe
+	@printf '%s\n' "Hello, my name is Microsoft Sam." "The quick brown fox jumps over the lazy dog, and then it runs away into the forest." > build/port_fe_texts.txt
+	@./build/port_fe data/msttsl < build/port_fe_texts.txt > build/port_fe_ref.txt
+	@./build/port_fe_baked < build/port_fe_texts.txt > build/port_fe_baked_out.txt
+	@if cmp -s build/port_fe_ref.txt build/port_fe_baked_out.txt; then echo "PORT-FE (baked image): identical to the image loaded from the DLL"; else echo "PORT-FE (baked): DIFFERENT"; exit 1; fi
+.PHONY: port-fe-baked-check

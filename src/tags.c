@@ -9,7 +9,12 @@ LAYOUT(TagOut, text_bytes, 0x10);
 
 #define CUR(pp) GP(const char, *(pp))
 #define ADV(pp) GPSET(*(pp), CUR(pp) + 1)
-#define KEYWORDS DLLVAR(const TagKeyword, 0x6371f218)
+// the table's fields one by one (a portable build's pointers are wider than the table's)
+#define KW_BASE 0x6371f218
+#define KW_NAME(i) GP(const char, DLLPTR(const char, KW_BASE + 16u * (uint32_t)(i))[0])
+#define KW_TOKEN(i) (*DLLVAR(const int32_t, KW_BASE + 16u * (uint32_t)(i) + 4))
+#define KW_CODE(i) (*DLLVAR(const int32_t, KW_BASE + 16u * (uint32_t)(i) + 8))
+#define KW_HANDLER(i) (*DLLVAR(const uint32_t, KW_BASE + 16u * (uint32_t)(i) + 12))
 #define NKEYWORDS 22
 
 int tag_lex_number(GPTR(const char) *pp, int32_t *out) {
@@ -23,9 +28,8 @@ int tag_lex_number(GPTR(const char) *pp, int32_t *out) {
 }
 
 int tag_keyword(const char *word) {
-    const TagKeyword *k = KEYWORDS;
     for (int i = 0; i < NKEYWORDS; i++)
-        if (vc_lstrcmpiA(word, GP(const char, k[i].name)) == 0) return k[i].token;
+        if (vc_lstrcmpiA(word, KW_NAME(i)) == 0) return KW_TOKEN(i);
     return TOK_WORD;
 }
 
@@ -123,14 +127,14 @@ int32_t tag_parse_flag(int kw, GPTR(const char) *pp, TagOut *out, char *buf, int
         if (t == TOK_END) return E_FAIL;
         if (t == TOK_BACKSLASH) break;
     }
-    out->code = KEYWORDS[kw].code;
+    out->code = KW_CODE(kw);
     return 0;
 }
 
 int32_t tag_parse_number(int kw, GPTR(const char) *pp, TagOut *out, char *buf, int n) {
     if (tag_lex(pp, buf, n) != TOK_EQ || tag_lex(pp, buf, n) != TOK_NUMBER || tag_lex(pp, buf, n) != TOK_BACKSLASH)
         return E_FAIL;
-    out->code = KEYWORDS[kw].code;
+    out->code = KW_CODE(kw);
     memcpy(&out->value, buf, 4);
     return 0;
 }
@@ -141,7 +145,7 @@ int32_t tag_parse_string(int kw, GPTR(const char) *pp, TagOut *out, char *buf, i
     char *t = vc_malloc(strlen(buf) + 1);
     GPSET(out->text, t);
     if (!t) return E_OUTOFMEMORY;
-    out->code = KEYWORDS[kw].code;
+    out->code = KW_CODE(kw);
     strcpy(t, buf);
     return 0;
 }
@@ -180,7 +184,7 @@ int tag_parse(char *tag, TagOut *out) {
     GPSET(p, tag + 1);
     int tok = tag_lex(&p, buf, (int)strlen(tag + 1));
     if (tok <= TOK_EQ) {
-        int32_t r = call_handler(CODEADDR(KEYWORDS[tok].handler), tok, &p, out, buf, (int)strlen(GP(const char, p)));
+        int32_t r = call_handler(CODEADDR(KW_HANDLER(tok)), tok, &p, out, buf, (int)strlen(GP(const char, p)));
         if (r >= 0) {
             vc_free(buf);
             return 1;

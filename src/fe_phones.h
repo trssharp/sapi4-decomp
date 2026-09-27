@@ -5,6 +5,7 @@
 #include "gptr.h"
 #include "fe_reader.h"
 #include "unitsel.h"
+#include <stdio.h>
 
 // @0x636761ab cdecl: five tapes of word object idx (0x585, 0xb05, 0x1085, 0x1605, 0x438e) copied into
 // new strings
@@ -35,3 +36,5 @@ void pros_alt_a(Prosody *p);                                     // @0x636798ce
 void pros_alt_b(Prosody *p);                                     // @0x6367930a
 void pros_alt_c(Prosody *p);                                     // @0x636787f9
 void pros_alt_d(GPTR(float) *tmp, Prosody *p);                   // @0x6367877e
+// the phone list as text, floats exactly (a comparison aid, not part of the engine)
+void phones_print(FILE *f, const PhoneIn *ph, int32_t n);
