@@ -301,3 +301,8 @@ void hk_unit_rate_update(Emu *e, X86 *c) { unit_rate_update(THIS(UnitStage)); }
 void hk_unit_set_rate(Emu *e, X86 *c) { E_RET(unit_set_rate(THIS(UnitStage), A(0))); }
 void hk_unit_reset_rate(Emu *e, X86 *c) { E_RET(unit_reset_rate(THIS(UnitStage))); }
 void hk_unit_set_amp(Emu *e, X86 *c) { E_RET(unit_set_amp(THIS(UnitStage), A(0))); }
+
+void hk_unit_send(Emu *e, X86 *c) { unit_send(THIS(UnitStage), GPH(UnitOutBuf, A(0), sizeof(UnitOutBuf))); }
+void hk_unit_phrase(Emu *e, X86 *c) { E_RET(unit_phrase(THIS(UnitStage), (PhoneIn *)(void *)x86_ptr(c, A(0), 1), AI(1))); }
+void hk_unit_thread_loop(Emu *e, X86 *c) { E_RET(unit_thread_loop(THIS(UnitStage))); }
+void hk_unit_thread_proc(Emu *e, X86 *c) { E_RET(unit_thread_loop(GPH(UnitStage, A(0), sizeof(UnitStage)))); }

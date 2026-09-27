@@ -4,6 +4,7 @@
 #include "gptr.h"
 #include "containers.h"
 #include "senone.h"
+#include "queue.h"
 
 typedef struct UnitRec {       // one phone of the phrase (0x4c bytes)
     int32_t phone;             // 0x00 phone index
@@ -63,13 +64,33 @@ typedef struct UnitStage {
     int32_t tree_mode;         // 0x298 1: senone_lookup; otherwise the older query (0x6367233c)
     int32_t senone_base;       // 0x29c
     int32_t sil_phone;         // 0x2a0 phone index used outside the phrase
-    uint8_t _2a4[0x2b4 - 0x2a4];
+    uint32_t wait_in[2];       // 0x2a4 stop event, input queue not empty
+    uint32_t wait_out[2];      // 0x2ac stop event, output queue has room
     int32_t last_b;            // 0x2b4 last b[] value carried across phrases (-1: none)
     float last_c;              // 0x2b8 the same for c[] (-1: none)
     uint32_t rate_flags;       // 0x2bc bit 1: scale by the alternative default rate
     int32_t rate_mode;         // 0x2c0 0: default rate; otherwise see rate_flags
     uint32_t alt_rate;         // 0x2c4
+    int32_t lattice;           // 0x2c8 alternative-unit search on
+    uint8_t cs[24];            // 0x2cc CRITICAL_SECTION guarding `_000` (the abort flag)
+    uint32_t ev_stop;          // 0x2e4
+    uint32_t ev_done;          // 0x2e8
+    GPTR(struct Queue) in;     // 0x2ec
+    GPTR(struct Queue) out;    // 0x2f0
 } UnitStage;
+
+// @0x63686614 thiscall (not decompiled yet): the alternative-unit search; may replace the phrase and its
+// length; returns the number of units
+int32_t unit_lattice(UnitStage *u, GPTR(PhoneIn) *ph, int32_t *n);
+// @0x6368571f thiscall: hand a phrase's units to the synthesizer queue (as 20-byte blob records),
+// waiting for room; dropped if the stage is aborted or stopped
+void unit_send(UnitStage *u, UnitOutBuf *units);
+// @0x63687974 thiscall: one phrase from the front end: tags are executed or forwarded, runs of phones
+// between marks are selected, timed and sent
+int32_t unit_phrase(UnitStage *u, PhoneIn *ph, int32_t n);
+// @0x63687ba4 thiscall: the unit stage's thread loop; @0x63687d3f, its stdcall thread procedure, is
+// the same call with the stage as the thread argument
+int32_t unit_thread_loop(UnitStage *u);
 
 // @0x63687e26 thiscall: derive dur_scale / sil_dur / final_sil from the rate
 void unit_rate_update(UnitStage *u);

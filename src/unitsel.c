@@ -1,4 +1,5 @@
 #include "unitsel.h"
+#include "tags.h"
 #include "crt_vc.h"
 #include "x87.h"
 #include <math.h>
@@ -499,5 +500,132 @@ int32_t unit_reset_rate(UnitStage *u) {
 int32_t unit_set_amp(UnitStage *u, uint32_t v) {
     u->amp = v & 0xffff;
     vc_PostMessageA(u->notify_hwnd, u->notify_msg, 3, 0);
+    return 0;
+}
+
+LAYOUT(UnitStage, wait_out, 0x2ac);
+LAYOUT(UnitStage, cs, 0x2cc);
+LAYOUT(UnitStage, out, 0x2f0);
+
+void unit_send(UnitStage *u, UnitOutBuf *units) {
+    uint32_t n = (uint32_t)units->bytes / 0x50u;
+    if (!n) return;
+    const UnitOut *src = GP(const UnitOut, units->units);
+    Blob *blobs = vc_malloc(n * 20u);
+    if (!blobs) return;
+    memset(blobs, 0, n * 20u);
+    for (int32_t i = 0; i < (int32_t)n; i++) blob_copy80(src + i, blobs + i);
+    int drop = locked_get_2cc(u) != 0;
+    if (!drop) {
+        if (vc_WaitForMultipleObjects(2, u->wait_out, 0, 0xffffffffu) == 0) drop = 1;
+        else {
+            vc_WaitForMultipleObjects(2, u->wait_out, 0, 0xffffffffu);
+            queue_push_n(GP(Queue, u->out), (const QItem *)blobs, n);
+        }
+    }
+    if (drop)
+        for (int32_t i = 0; i < (int32_t)n; i++) vc_free(GP(void, blobs[i].data));
+    vc_free(blobs);
+}
+
+int32_t unit_phrase(UnitStage *u, PhoneIn *ph, int32_t n) {
+    UnitOutBuf st = { 0, 0 };
+    int32_t prev = u->sil_phone, i = 0;
+    phone_fixups((char *)ph, n);
+    unit_select(u, (const char *)ph, n);
+    GPTR(PhoneIn) pph;
+    GPSET(pph, ph);
+    int32_t m = unit_lattice(u, &pph, &n);
+    ph = GP(PhoneIn, pph);
+    u->last_b = -1;
+    u->last_c = -1.0f;
+    u->rate_flags = 0;
+    u->rate_mode = 0;
+    u->alt_rate = u->default_rate;
+    PhoneIn *base = ph, *p = ph;
+    while (i < n) {
+        char c = p->name[0];
+        if (c == '\\') {
+            TagOut *tag = vc_malloc(0x14);
+            if (!tag) return 0;
+            memset(tag, 0, 0x14);
+            tag_parse(p->name, tag);
+            if (tag->code == 0x19) {
+                unit_set_amp(u, 0xffffffffu);
+                unit_reset_rate(u);
+                queue_push(GP(Queue, u->out), (const QItem *)tag);
+            } else if (tag->code == 0x1c) {
+                unit_set_amp(u, (uint32_t)tag->value);
+            } else if (tag->code == 0x1a) {
+                unit_set_rate(u, (uint32_t)tag->value);
+            } else {
+                queue_push(GP(Queue, u->out), (const QItem *)tag);
+            }
+            vc_free(tag);
+            i++;
+            p++;
+            continue;
+        }
+        if (c == '#') {
+            i++;
+            p++;
+            continue;
+        }
+        int32_t j = i + 1, cnt = 1;
+        while (j < n && !is_mark(base[j].name[0])) { j++; cnt++; }
+        while (j < n && is_mark(base[j].name[0])) j++;
+        int next = j < n ? GP(int16_t, u->ids)[cnt] : u->sil_phone;
+        unit_prosody(u, p, cnt, &prev, next, &st);
+        unit_send(u, &st);
+        vc_free(GP(void, st.units));
+        UnitRec *recs = GP(UnitRec, u->recs);
+        memmove(recs, recs + cnt, (size_t)(uint32_t)(m * 0x4c - cnt * 0x4c));
+        int16_t *ids = GP(int16_t, u->ids), *sen = GP(int16_t, u->senones);
+        uint32_t bytes = 2u * (uint32_t)(m - cnt);
+        memmove(ids, ids + cnt, bytes);
+        memmove(sen, sen + cnt, bytes);
+        m -= cnt;
+        i += cnt;
+        p += cnt;
+    }
+    return 0;
+}
+
+int32_t unit_thread_loop(UnitStage *u) {
+    QItem it;
+    u->wait_in[0] = u->ev_stop;
+    u->wait_out[0] = u->ev_stop;
+    u->wait_in[1] = GP(Queue, u->in)->ev_nonempty;
+    u->wait_out[1] = GP(Queue, u->out)->ev_room;
+    for (;;) {
+        if (vc_WaitForMultipleObjects(2, u->wait_in, 0, 0xffffffffu) == 0) break;
+        if (!queue_pop(GP(Queue, u->in), &it)) continue;
+        switch (it.v[0]) {
+        case 3:
+            if (locked_get_2cc(u) == 0) {
+                if (!it.v[3]) continue;
+                unit_phrase(u, GP(PhoneIn, it.v[3]), (int32_t)(it.v[4] / 100u));
+            }
+            if (it.v[3]) vc_free(GP(void, it.v[3]));
+            continue;
+        case 0x1a: unit_set_rate(u, it.v[1]); continue;
+        case 0x1c: unit_set_amp(u, it.v[1]); continue;
+        case 0x19:
+            unit_reset_rate(u);
+            unit_set_amp(u, 0xffffffffu);
+            break;
+        default: break;
+        }
+        if (vc_WaitForMultipleObjects(2, u->wait_out, 0, 0xffffffffu) == 0) {
+            if (it.v[3]) vc_free(GP(void, it.v[3]));
+            continue;
+        }
+        queue_push(GP(Queue, u->out), &it);
+    }
+    while (queue_pop(GP(Queue, u->in), &it)) {
+        if (it.v[0] == 9 && it.v[1]) vc_com_release(it.v[1]);
+        if (it.v[3]) vc_free(GP(void, it.v[3]));
+    }
+    vc_SetEvent(u->ev_done);
     return 0;
 }
