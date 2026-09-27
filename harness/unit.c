@@ -13,6 +13,7 @@
 #include "tags.h"
 #include "senone.h"
 #include "unitsel.h"
+#include "fe_rules.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -553,6 +554,41 @@ static void t_prosody(int iter) {
     reg_check("unit_prosody_a", iter);
 }
 
+// rule-module tape helpers: the shared tapes pointed at fresh buffers, every instance tested
+static void t_tapes(int iter) {
+    static const uint32_t g43[9] = { 0x63697558, 0x636979ca, 0x63698347, 0x636987f0, 0x63698cc8, 0x636991a6, 0x63699615, 0x6369a374, 0x6369a777 };
+    static const uint32_t g220[10][2] = { {0x63697583,0x63739780},{0x636979f5,0x637397b8},{0x63697e9c,0x637397f0},{0x63698372,0x63739828},{0x6369881b,0x63739860},
+        {0x63698cf3,0x63739898},{0x636991d1,0x637398d0},{0x63699640,0x63739908},{0x6369a39f,0x63739948},{0x6369a7a2,0x63739988} };
+    static const uint32_t tapes[4] = { TAPE_A, TAPE_B, TAPE_C, TAPE_D };
+    uint32_t save[4];
+    for (int k = 0; k < 4; k++) {
+        uint32_t t = galloc(400);
+        for (int i = 0; i < 400; i++) ((uint8_t *)gp(t, 400))[i] = (rnd() % 8) ? (uint8_t)rndi(0x21, 0x7e) : (uint8_t)rnd();
+        save[k] = rd32(C, gaddr(tapes[k])); wr32(C, gaddr(tapes[k]), t);
+    }
+    int16_t lo = (int16_t)rndi(0, 300), hi = (int16_t)(lo + rndi(-2, 60));
+    uint32_t a[2] = { (uint32_t)(int32_t)lo, (uint32_t)(int32_t)hi };
+    for (int k = 0; k < 9; k++) {
+        uint32_t r1 = call(g43[k], 2, a) & 0xff, r2 = (uint32_t)tapes_graphic(lo, hi);
+        check("tapes_graphic", iter, "AL", &r1, &r2, 4);
+    }
+    for (int k = 0; k < 10; k++) {
+        int16_t *ends = gp(gaddr(g220[k][1]), 8);
+        int16_t se[4]; memcpy(se, ends, 8);
+        for (int q = 0; q < 4; q++) ends[q] = (int16_t)rndi(-1, 300);
+        int16_t av = (int16_t)rndi(-5, 330);
+        uint32_t b[2] = { (uint32_t)(int32_t)av, 0 };
+        for (int q = 0; q < 4; q++) reg_add(rd32(C, gaddr(tapes[q])), 400);
+        uint32_t r1 = call(g220[k][0], 2, b);
+        reg_save();
+        uint32_t r2 = ((uint32_t)(int32_t)av & 0xffff0000u) | (uint16_t)tapes_pad(ends, av);
+        check("tapes_pad", iter, "AX", &r1, &r2, 4);
+        reg_check("tapes_pad", iter);
+        memcpy(ends, se, 8);
+    }
+    for (int k = 0; k < 4; k++) wr32(C, gaddr(tapes[k]), save[k]);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -578,6 +614,7 @@ int main(int argc, char **argv) {
         t_tags(it);
         t_senone(it);
         t_prosody(it);
+        t_tapes(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }

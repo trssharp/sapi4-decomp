@@ -12,6 +12,7 @@
 #include "senone.h"
 #include "unitsel.h"
 #include "fe_small.h"
+#include "fe_rules.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -256,3 +257,24 @@ void hk_free_if(Emu *e, X86 *c) { E_RET(free_if(A(0) ? (void *)x86_ptr(c, A(0), 
 void hk_is_digit_char(Emu *e, X86 *c) { E_RET(is_digit_char((char)A(0))); }
 void hk_char_class16(Emu *e, X86 *c) { E_RET(char_class16((uint16_t)A(0))); }
 void hk_freelist_push(Emu *e, X86 *c) { freelist_push(GPH(FreeNode, A(0), sizeof(FreeNode))); E_RET(A(0)); }
+
+// rule-module instances: one C function, one adapter per copy in the DLL
+void hk_tapes_graphic_0(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)tapes_graphic((int16_t)A(0), (int16_t)A(1))); }
+void hk_tapes_graphic_1(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)tapes_graphic((int16_t)A(0), (int16_t)A(1))); }
+void hk_tapes_graphic_2(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)tapes_graphic((int16_t)A(0), (int16_t)A(1))); }
+void hk_tapes_graphic_3(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)tapes_graphic((int16_t)A(0), (int16_t)A(1))); }
+void hk_tapes_graphic_4(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)tapes_graphic((int16_t)A(0), (int16_t)A(1))); }
+void hk_tapes_graphic_5(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)tapes_graphic((int16_t)A(0), (int16_t)A(1))); }
+void hk_tapes_graphic_6(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)tapes_graphic((int16_t)A(0), (int16_t)A(1))); }
+void hk_tapes_graphic_7(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)tapes_graphic((int16_t)A(0), (int16_t)A(1))); }
+void hk_tapes_graphic_8(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint8_t)tapes_graphic((int16_t)A(0), (int16_t)A(1))); }
+void hk_tapes_pad_0(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x63739780), (int16_t)A(0))); }
+void hk_tapes_pad_1(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x637397b8), (int16_t)A(0))); }
+void hk_tapes_pad_2(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x637397f0), (int16_t)A(0))); }
+void hk_tapes_pad_3(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x63739828), (int16_t)A(0))); }
+void hk_tapes_pad_4(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x63739860), (int16_t)A(0))); }
+void hk_tapes_pad_5(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x63739898), (int16_t)A(0))); }
+void hk_tapes_pad_6(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x637398d0), (int16_t)A(0))); }
+void hk_tapes_pad_7(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x63739908), (int16_t)A(0))); }
+void hk_tapes_pad_8(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x63739948), (int16_t)A(0))); }
+void hk_tapes_pad_9(Emu *e, X86 *c) { E_RET((A(0) & 0xffff0000u) | (uint16_t)tapes_pad(DLLVAR(const int16_t, 0x63739988), (int16_t)A(0))); }
