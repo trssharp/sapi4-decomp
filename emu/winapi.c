@@ -31,9 +31,7 @@ static void h_lstrcpynA(Emu *e, X86 *c) {
     const char *s = S(A(1));
     size_t L = strlen(s);
     if (L > n - 1) L = n - 1;
-    char *d = PTR(A(0), (uint32_t)L + 1);
-    memmove(d, s, L);
-    d[L] = 0;
+    vc_lstrcpynA(PTR(A(0), (uint32_t)L + 1), s, n);
     E_RET(A(0));
 }
 static void h_lstrlenA(Emu *e, X86 *c) { E_RET(A(0) ? strlen(S(A(0))) : 0); }
@@ -397,8 +395,8 @@ static void h_FindClose(Emu *e, X86 *c) {
 }
 
 // ------------------------------------------------------------------ USER32
-static void h_CharUpperBuffA(Emu *e, X86 *c) { uint32_t n = A(1); char *s = n ? PTR(A(0), n) : NULL; for (uint32_t i = 0; i < n; i++) s[i] = (char)cp1252_toupper((uint8_t)s[i]); E_RET(n); }
-static void h_CharLowerBuffA(Emu *e, X86 *c) { uint32_t n = A(1); char *s = n ? PTR(A(0), n) : NULL; for (uint32_t i = 0; i < n; i++) s[i] = (char)cp1252_tolower((uint8_t)s[i]); E_RET(n); }
+static void h_CharUpperBuffA(Emu *e, X86 *c) { uint32_t n = A(1); char *s = n ? PTR(A(0), n) : NULL; E_RET(n ? vc_CharUpperBuffA(s, n) : 0); }
+static void h_CharLowerBuffA(Emu *e, X86 *c) { uint32_t n = A(1); char *s = n ? PTR(A(0), n) : NULL; E_RET(n ? vc_CharLowerBuffA(s, n) : 0); }
 static void h_CharLowerA(Emu *e, X86 *c) {
     uint32_t p = A(0);
     if (p < 0x10000) { E_RET(cp1252_tolower((uint8_t)p)); return; }

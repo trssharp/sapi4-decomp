@@ -83,6 +83,16 @@ char *vc_strrev(char *s) {
     return s;
 }
 int32_t vc_atoi(const char *s) { return (int32_t)strtol(s, NULL, 10); }
+char *vc_lstrcpynA(char *d, const char *s, uint32_t n) {
+    if (!n) return d;
+    size_t L = strlen(s);
+    if (L > n - 1) L = n - 1;
+    memmove(d, s, L);
+    d[L] = 0;
+    return d;
+}
+uint32_t vc_CharLowerBuffA(char *s, uint32_t n) { for (uint32_t i = 0; i < n; i++) s[i] = (char)cp1252_tolower((uint8_t)s[i]); return n; }
+uint32_t vc_CharUpperBuffA(char *s, uint32_t n) { for (uint32_t i = 0; i < n; i++) s[i] = (char)cp1252_toupper((uint8_t)s[i]); return n; }
 
 // Approximation of the Win32 "word sort" used by CompareStringA/lstrcmp(i)A: hyphen and apostrophe
 // are ignored on the first pass; case differences only break ties (lowercase first).

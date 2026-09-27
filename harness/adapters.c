@@ -6,6 +6,7 @@
 #include "fe_phrase.h"
 #include "fe_output.h"
 #include "fe_text.h"
+#include "fe_lexer.h"
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -550,3 +551,12 @@ void hk_txt_words(Emu *e, X86 *c) {
 }
 void hk_txt_rules(Emu *e, X86 *c) { E_RET((uint32_t)txt_rules(GPH(uint8_t, A(0), 0xc9), AI(1), AI(2))); }
 void hk_txt_rewrite(Emu *e, X86 *c) { E_RET((uint32_t)txt_rewrite(GSTR(A(0)), GPH(uint32_t, A(1), 4), AI(2))); }
+void hk_lex_find(Emu *e, X86 *c) { E_RET((uint32_t)lex_find(GPH(char, A(0), 1), A(1), GPH(uint32_t, A(2), 4), AI(3))); }
+void hk_lex_is_dash(Emu *e, X86 *c) { E_RET((uint32_t)lex_is_dash((char)A(0))); }
+void hk_lex_abbrev(Emu *e, X86 *c) { E_RET((uint32_t)lex_abbrev(GPH(char, A(0), 1), A(1))); }
+void hk_lex_title(Emu *e, X86 *c) { E_RET((uint32_t)lex_title(GPH(char, A(0), 1), A(1), AI(2))); }
+void hk_lex_common(Emu *e, X86 *c) { E_RET((uint32_t)lex_common(GPH(char, A(0), 1), A(1))); }
+void hk_lex_emoticon(Emu *e, X86 *c) { E_RET((uint32_t)lex_emoticon(GPH(char, A(0), 1), AI(1), GPH(int32_t, A(2), 4))); }
+void hk_lex_next(Emu *e, X86 *c) { uint32_t self = c->s.r[ECX]; lex_next(GPH(Lexer, self, sizeof(Lexer)), GPH(TextSpan, A(0), sizeof(TextSpan))); E_RET(self + 0x10); }
+void hk_lex_init(Emu *e, X86 *c) { uint32_t self = c->s.r[ECX]; lex_init(GPH(Lexer, self, sizeof(Lexer)), A(0), AI(1)); E_RET(self + 0x10); }
+void hk_lex_classes(Emu *e, X86 *c) { lex_classes(); E_RET(c->s.r[EAX]); }

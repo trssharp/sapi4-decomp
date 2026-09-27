@@ -20,6 +20,7 @@
 #include "fe_word.h"
 #include "fe_phrase.h"
 #include "fe_text.h"
+#include "fe_lexer.h"
 #include "../port/lexdump.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -1788,6 +1789,90 @@ static void t_text(int iter) {
     free(h0.mem); free(h1.mem);
 }
 
+// the lexer over texts of words, numbers, abbreviations, punctuation and escapes
+static void t_lexer(int iter) {
+    static int inited;
+    if (!inited) { call(0x6369c2bd, 0, NULL); inited = 1; }
+    static const char *pieces[] = { "hello", "World", "don't", "rock'n'roll", "e-mail", "U.S.", "U.S.A.", "Mr.", "Dr.", "Adm.",
+        "etc.", "e.g.", "Jan.", "Capt.", "St.", "Ave.", "NASA", "IBM", "B.B.C.", "x.y", "3.14", "1,000", "1,000,000", "12:30",
+        "555-1234", "1/2", "50%", "$45.99", "42nd", "1990s", "A", "I", "The", "And", "After", ":-)", ";^)", ">:-(", "8-0",
+        ",", ".", "!", "?", "\"", "'", "(", ")", "-", "--", "...", ":", ";", "&", "@", "#", "\xe9t\xe9", "caf\xe9",
+        "  ", "\t", "\x1b\\Pit=100\\", ("\x1b" "P"), "\r\n" };
+    char text[300];
+    int n = 0;
+    while (n < 200) {
+        const char *pc = pieces[rnd() % (sizeof pieces / sizeof pieces[0])];
+        size_t l = strlen(pc);
+        memcpy(text + n, pc, l); n += (int)l;
+        if (rnd() % 3) text[n++] = ' ';
+    }
+    text[n] = 0;
+    uint32_t gt = galloc(320), glx = galloc(sizeof(Lexer)), gout = galloc(sizeof(TextSpan));
+    memcpy(gp(gt, 320), text, (size_t)n + 1);
+    for (int k = 0; k < 30; k++) {
+        Lexer *lx = gp(glx, sizeof(Lexer));
+        memset(lx, 0, sizeof *lx);
+        lx->buf = gt;
+        lx->end = n;
+        lx->start = rndi(0, n);
+        if (rnd() % 8 == 0) { lx->pending.buf = gt; lx->pending.f4 = rndi(1, 16); lx->pending.pos = rndi(0, n); lx->pending.len = 1; }
+        Lexer before = *lx;
+        memset(gp(gout, sizeof(TextSpan)), 0x5a, sizeof(TextSpan));
+        C->s.r[ECX] = glx;
+        call(0x6369c9e6, 1, &gout);
+        TextSpan o1 = *(TextSpan *)gp(gout, sizeof(TextSpan));
+        Lexer a1 = *lx;
+        *lx = before;
+        memset(gp(gout, sizeof(TextSpan)), 0x5a, sizeof(TextSpan));
+        lex_next(lx, gp(gout, sizeof(TextSpan)));
+        check("lex_next", iter, "token", &o1, gp(gout, sizeof(TextSpan)), sizeof o1);
+        check("lex_next", iter, "lexer", &a1, lx, sizeof a1);
+    }
+    emu_free(E, gt); emu_free(E, glx); emu_free(E, gout);
+}
+
+// the lexer's word checks, on entries of its own tables (changed in case and length) and random words
+static void t_lexwords(int iter) {
+    static const struct { uint32_t tab, cnt; } tabs[] = { { 0x63733c28, 0x63735244 }, { 0x63735248, 0x637353a4 }, { 0x637353e0, 0x63735560 } };
+    char w[64];
+    int t = rndi(0, 2);
+    uint32_t cnt = rd32(C, gaddr(tabs[t].cnt));
+    if (rnd() % 4) {
+        uint32_t e = rd32(C, gaddr(tabs[t].tab) + 4u * (uint32_t)rndi(0, (int)cnt - 1));
+        snprintf(w, sizeof w, "%s", (char *)gp(e, 1));
+    } else if (rnd() % 3) {
+        int n = rndi(1, 8);
+        for (int i = 0; i < n; i++) w[i] = (char)((rnd() % 5) ? rndi('a', 'z') : (rnd() & 1) ? rndi('A', 'Z') : '.');
+        w[n] = 0;
+    } else {                                // initials: "X.Y."
+        int n = 2 * rndi(1, 4);
+        for (int i = 0; i < n; i++) w[i] = (char)((i & 1) ? ((rnd() % 6) ? '.' : ',') : rndi('A', 'Z'));
+        w[n] = 0;
+    }
+    int n = (int)strlen(w);
+    switch (rnd() % 5) {
+    case 0: for (int i = 0; i < n; i++) if (w[i] >= 'A' && w[i] <= 'Z') w[i] = (char)(w[i] + 32); break;
+    case 1: for (int i = 0; i < n; i++) if (w[i] >= 'a' && w[i] <= 'z') w[i] = (char)(w[i] - 32); break;
+    case 2: if (n > 1) w[--n] = 0; break;
+    case 3: if (n < 60) { memmove(w + 3, w, (size_t)n + 1); memcpy(w, "ex-", 3); n += 3; } break;
+    }
+    uint32_t gw = galloc(80);
+    memcpy(gp(gw, 80), w, (size_t)n + 1);
+    uint32_t len = (uint32_t)(n ? rndi(1, n) : 0);
+    uint32_t a2[2] = { gw, len }, a3[3] = { gw, len, rnd() & 1 };
+    uint32_t r1 = call(0x6369c637, 2, a2), r2 = (uint32_t)lex_abbrev(gp(gw, 80), len);
+    check("lex_abbrev", iter, "EAX", &r1, &r2, 4);
+    memcpy(gp(gw, 80), w, (size_t)n + 1);
+    r1 = call(0x6369c7ea, 3, a3); r2 = (uint32_t)lex_title(gp(gw, 80), len, (int32_t)a3[2]);
+    check("lex_title", iter, "EAX", &r1, &r2, 4);
+    r1 = call(0x6369c8c0, 2, a2); r2 = (uint32_t)lex_common(gp(gw, 80), len);
+    check("lex_common", iter, "EAX", &r1, &r2, 4);
+    uint32_t a4[4] = { gw, len, gaddr(tabs[t].tab), cnt };
+    r1 = call(0x6369d620, 4, a4); r2 = (uint32_t)lex_find(gp(gw, 80), len, DLLPTR(char, tabs[t].tab), (int32_t)cnt);
+    check("lex_find", iter, "EAX", &r1, &r2, 4);
+    emu_free(E, gw);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -1852,6 +1937,8 @@ int main(int argc, char **argv) {
         if (it < 300) t_evplace(it);
         if (it < 600) t_phrase(it);
         t_text(it);
+        t_lexer(it);
+        t_lexwords(it);
         if (it < 600) t_main(it);
         if (it < 900) t_proc(it);
         if (it < 500) t_viterbi(it);
