@@ -2,6 +2,7 @@
 // pointers into guest memory (bounds-checked for the extent the function touches).
 #include "adapters.h"
 #include "dsp.h"
+#include "fft.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -85,4 +86,10 @@ void hk_dsp_cmp_float(Emu *e, X86 *c) {
 void hk_dsp_sort_floats(Emu *e, X86 *c) {
     int n = AI(1);
     E_RET(dsp_sort_floats(PTR(float, A(0), n), n));
+}
+
+void hk_fft_inverse_real(Emu *e, X86 *c) {
+    int n = AI(1), m = AI(2);
+    // the table is read up to sine[3*step*j + n/2] < 2n
+    fft_inverse_real(PTR(float, A(0), n), n, m, PTR(float, A(3), n > 0 ? 2 * n : 0));
 }

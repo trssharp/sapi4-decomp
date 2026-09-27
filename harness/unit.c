@@ -6,9 +6,11 @@
 #include "emu_internal.h"
 #include "hooks.h"
 #include "dsp.h"
+#include "fft.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 static Emu *E;
 static X86 *C;
@@ -140,6 +142,20 @@ static void t_more(int iter) {
     check("dsp_sort_floats", iter, "x", gp(gz, 4u * (sn > 0 ? sn : 1)), h3, 4u * (sn > 0 ? sn : 0));
 }
 
+static float fx[4096], fs[8192];
+static void t_fft(int iter) {
+    int m = rndi(1, 10), n = 1 << m;
+    for (int i = 0; i < n; i++) fx[i] = rndf();
+    for (int i = 0; i < 2 * n; i++) fs[i] = (iter & 1) ? (float)sin(3.14159265358979 * i / n) : rndf();
+    uint32_t gx = galloc(4u * n), gs = galloc(8u * n);
+    memcpy(gp(gx, 4u * n), fx, 4u * n);
+    memcpy(gp(gs, 8u * n), fs, 8u * n);
+    uint32_t a[4] = { gx, (uint32_t)n, (uint32_t)m, gs };
+    call(0x63684b60, 4, a);
+    fft_inverse_real(fx, n, m, fs);
+    check("fft_inverse_real", iter, "x", gp(gx, 4u * n), fx, 4u * n);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -155,6 +171,7 @@ int main(int argc, char **argv) {
         t_filter(0, it); t_filter(1, it); t_filter(2, it);
         t_vec(it);
         t_more(it);
+        t_fft(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
     printf("unit: %d checks, %d mismatches\n", cases, fails);
