@@ -18,6 +18,7 @@
 #include "fe_vm.h"
 #include "fe_lex.h"
 #include "fe_word.h"
+#include "fe_phrase.h"
 #include "../port/lexdump.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -1638,6 +1639,101 @@ static void t_word(int iter) {
     emu_free(E, go);
 }
 
+// the phrase event list placement
+static void t_evplace(int iter) {
+    uint32_t go = galloc(0xb600);
+    uint8_t *w = gp(go, 0xb600);
+    memset(w, 0, 0xb600);
+    int16_t s = (int16_t)rndi(2, 20), e = (int16_t)(s + rndi(0, 30));
+    memcpy(w, &s, 2); memcpy(w + 2, &e, 2);
+    for (int i = 0; i < 0x80; i++) { w[5 + i] = (uint8_t)((rnd() % 4) ? 0 : rndi(1, 3)); w[0x585 + i] = (uint8_t)((rnd() % 5) ? rndi('a', 'z') : (rnd() & 1) ? '-' : '#'); }
+    for (int i = 0; i < 0x80; i++) { int16_t d = (int16_t)rndi(0, 300); memcpy(w + 0x1b8c + 2 * i, &d, 2); }
+    w[0xb4b8] = (uint8_t)rndi(0, 7);
+    int32_t v = rndi(0, 5000); memcpy(w + 0xb580, &v, 4);
+    // a list of nodes from the original allocator
+    int nn = rndi(0, 12);
+    uint32_t head = 0, prevn = 0;
+    for (int k = 0; k < nn; k++) {
+        uint32_t n = call(0x6368aca2, 0, NULL);
+        wr32(C, n, (uint32_t)(k == 1 ? 2 : rndi(1, 2)));   // (two kind-1 events before a kind-2 make the original read address 0x0c)
+        if (prevn) wr32(C, prevn + 0x18, n); else head = n;
+        prevn = n;
+    }
+    wr32(C, go + 0xb4ac, head);
+    HeapSnap h0; heap_snap(&h0);
+    uint32_t fl0 = rd32(C, gaddr(0x63738c9c)), bl0 = rd32(C, gaddr(0x63738ca0));
+    uint32_t r1 = call(0x6368af3e, 1, &go);
+    HeapSnap h1; heap_snap(&h1);
+    uint32_t fl1 = rd32(C, gaddr(0x63738c9c)), bl1 = rd32(C, gaddr(0x63738ca0));
+    heap_restore(&h0);
+    wr32(C, gaddr(0x63738c9c), fl0); wr32(C, gaddr(0x63738ca0), bl0);
+    uint32_t r2 = (uint32_t)ev_place(gp(go, 0xb600));
+    check("ev_place", iter, "EAX", &r1, &r2, 4);
+    uint32_t fl2 = rd32(C, gaddr(0x63738c9c)), bl2 = rd32(C, gaddr(0x63738ca0));
+    check("ev_place", iter, "free list", &fl1, &fl2, 4);
+    check("ev_place", iter, "blocks", &bl1, &bl2, 4);
+    heap_check("ev_place", iter, &h1);
+    free(h0.mem); free(h1.mem);
+}
+
+// machine A's phrase heuristics on a random word object: marks, durations, segments, pitch
+static void t_phrase(int iter) {
+    uint32_t go = galloc(0xb600);
+    uint8_t *w = gp(go, 0xb600);
+    for (int i = 0; i < 0xb600; i++) w[i] = (uint8_t)rnd();
+    static const char ta_al[] = "abcdefghiklmnoprstuvwxzAEIOUV#?-~ $\x19\x4c\xa4";
+    static const char t1_al[] = "+*ab ", t2_al[] = " FSPZq", t3_al[] = ".,ab ~", t4_al[] = "()1234578ABFHILOPSTUWXYZ]abcfhjlpqtuxz ";
+    for (int i = 0; i < 0x200; i++) {
+        w[0x585 + i] = (uint8_t)ta_al[rnd() % (sizeof ta_al - 1)];
+        w[0xb05 + i] = (uint8_t)t1_al[rnd() % (sizeof t1_al - 1)];
+        w[0x1085 + i] = (uint8_t)t2_al[rnd() % (sizeof t2_al - 1)];
+        w[0x1605 + i] = (uint8_t)t3_al[rnd() % (sizeof t3_al - 1)];
+        w[0x438e + i] = (uint8_t)t4_al[rnd() % (sizeof t4_al - 1)];
+        int16_t d = (int16_t)((rnd() % 8) ? rndi(0, 400) : rndi(0xb00, 0xd00));
+        memcpy(w + 0x1b8c + 2 * i, &d, 2);
+        int16_t d2 = (int16_t)rndi(0, 300); memcpy(w + 0x9916 + 2 * i, &d2, 2);
+        int16_t z = (int16_t)((rnd() % 6) ? 0 : rndi(1, 3)); memcpy(w + 0x258c + 2 * i, &z, 2);
+    }
+    int16_t rate = (int16_t)rndi(20, 60), rate2 = (int16_t)rndi(20, 60);
+    memcpy(w + 0xb58a, &rate, 2); memcpy(w + 0xb588, &rate2, 2);
+    int16_t np = (int16_t)rndi(0, 3); memcpy(w + 0x438c, &np, 2);
+    for (int k = 1; k <= 4; k++) { int32_t t = rndi(0, 3000); memcpy(w + 0x2f84 + 8 * k, &t, 4); }
+    int16_t lo = (int16_t)rndi(3, 20), hi = (int16_t)(lo + rndi(1, 40));
+    uint8_t flag = (uint8_t)(rnd() & 1);
+    wr32(C, gaddr(0x63739274), go);
+    wr32(C, gaddr(0x63739268), go + 0x585);
+    wr32(C, gaddr(0x63738ca8), go + 0x1085);
+    wr32(C, gaddr(0x63738c98), rnd() & 1);
+    const uint32_t dbase = 0x6371c000, dsize = 0x1e0b0;
+    static const struct { uint32_t fn; int nargs; } fs[] = { { 0x6368b8e1, 3 }, { 0x6368bab2, 3 }, { 0x6368c6f1, 3 }, { 0x6368f732, 3 } };
+    for (int f = 0; f < 4; f++) {
+        uint8_t *w0 = malloc(0xb600), *d0 = malloc(dsize);
+        memcpy(w0, w, 0xb600); memcpy(d0, gp(gaddr(dbase), dsize), dsize);
+        uint32_t a[3] = { (uint32_t)lo, (uint32_t)hi, flag };
+        if (f == 3) { a[0] = go; a[1] = (uint32_t)lo; a[2] = (uint32_t)hi; }
+        emu_set_insn_budget(E, 50000000);
+        call(fs[f].fn, 3, a);
+        emu_set_insn_budget(E, 0);
+        if (E->failed) { fprintf(stderr, "phrase case %d fn %d: %s\n", iter, f, emu_error(E)); exit(1); }
+        uint8_t *w1 = malloc(0xb600), *d1 = malloc(dsize);
+        memcpy(w1, w, 0xb600); memcpy(d1, gp(gaddr(dbase), dsize), dsize);
+        memcpy(w, w0, 0xb600); memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+        switch (f) {
+        case 0: ph_marks(lo, hi, flag); break;
+        case 1: ph_durations(lo, hi, flag); break;
+        case 2: ph_segments(lo, hi, flag); break;
+        case 3: ph_pitch(w, lo, hi); break;
+        }
+        static const char *names[] = { "ph_marks", "ph_durations", "ph_segments", "ph_pitch" };
+        if (getenv("VDBG")) for (int i = 0; i < 0xb600; i++) if (w1[i] != w[i]) fprintf(stderr, "  %s w+%x: orig %02x C %02x\n", names[f], i, w1[i], w[i]);
+        if (getenv("VDBG")) for (uint32_t i = 0; i < dsize; i++) if (d1[i] != ((uint8_t *)gp(gaddr(dbase), dsize))[i]) fprintf(stderr, "  %s .data %08x: orig %02x C %02x\n", names[f], dbase + i, d1[i], ((uint8_t *)gp(gaddr(dbase), dsize))[i]);
+        check(names[f], iter, "word object", w1, w, 0xb600);
+        check(names[f], iter, ".data", d1, gp(gaddr(dbase), dsize), dsize);
+        free(w0); free(d0); free(w1); free(d1);
+    }
+    emu_free(E, go);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -1699,6 +1795,8 @@ int main(int argc, char **argv) {
         t_lexmain(it);
         t_procx(it);
         t_word(it);
+        if (it < 300) t_evplace(it);
+        if (it < 600) t_phrase(it);
         if (it < 600) t_main(it);
         if (it < 900) t_proc(it);
         if (it < 500) t_viterbi(it);

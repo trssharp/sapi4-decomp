@@ -3,6 +3,7 @@
 #include "adapters.h"
 #include "fe_lex.h"
 #include "fe_word.h"
+#include "fe_phrase.h"
 #include "dsp.h"
 #include "fft.h"
 #include "lpc.h"
@@ -492,3 +493,19 @@ void hk_word_stop_weight(Emu *e, X86 *c) { word_stop_weight(GPH(uint8_t, A(0), 0
 void hk_word_cluster_find(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)word_cluster_find((int16_t)A(0), (int16_t)A(1), (int16_t)A(2), (int16_t)A(3))); }
 void hk_word_cluster(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)word_cluster(GPH(int16_t, A(0), 2), (int16_t)A(1))); }
 void hk_word_durations(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | word_durations(GPH(uint8_t, A(0), 0xb600))); }
+void hk_ev_alloc(Emu *e, X86 *c) { EvNode *n = ev_alloc(); E_RET(n ? (uint32_t)((uint8_t *)n - decomp_guest_mem) : 0); }
+void hk_ev_clear(Emu *e, X86 *c) { ev_clear(GPH(uint8_t, A(0), 0xb600)); E_RET(c->s.r[EAX]); }
+void hk_ev_place(Emu *e, X86 *c) { E_RET((uint32_t)ev_place(GPH(uint8_t, A(0), 0xb600))); }
+void hk_ph_near_dash(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | ph_near_dash(GPH(uint8_t, A(0) - 0x10, 0x10) + 0x10, AI(1), AI(2), AI(3))); }
+void hk_ph_stress_marks(Emu *e, X86 *c) { ph_stress_marks(GPH(uint8_t, A(0), 1), GPH(uint8_t, A(1), 1), (int16_t)A(2), (int16_t)A(3), (uint8_t)A(4)); E_RET(c->s.r[EAX]); }
+void hk_ph_marks(Emu *e, X86 *c) { ph_marks((int16_t)A(0), (int16_t)A(1), (uint8_t)A(2)); E_RET(c->s.r[EAX]); }
+void hk_ph_vowel_factor(Emu *e, X86 *c) { int32_t o; uint8_t r = ph_vowel_factor(AI(0), &o); *GPH(int32_t, A(1), 4) = o; E_RET((c->s.r[EAX] & ~0xffu) | r); }
+void hk_ph_final_factor(Emu *e, X86 *c) { int32_t o; ph_final_factor(AI(0), &o); *GPH(int32_t, A(1), 4) = o; E_RET(c->s.r[EAX]); }
+void hk_ph_cluster_factor(Emu *e, X86 *c) { int32_t o = *GPH(int32_t, A(1), 4); uint8_t r = ph_cluster_factor(AI(0), &o); *GPH(int32_t, A(1), 4) = o; E_RET((c->s.r[EAX] & ~0xffu) | r); }
+void hk_ph_split(Emu *e, X86 *c) { ph_split(AI(0)); E_RET(c->s.r[EAX]); }
+void hk_ph_durations(Emu *e, X86 *c) { ph_durations((int16_t)A(0), (int16_t)A(1), (uint8_t)A(2)); E_RET(c->s.r[EAX]); }
+void hk_ph_segments(Emu *e, X86 *c) { ph_segments((int16_t)A(0), (int16_t)A(1), (uint8_t)A(2)); E_RET(c->s.r[EAX]); }
+void hk_ph_target(Emu *e, X86 *c) { ph_target(AI(0), AI(1)); E_RET(c->s.r[EAX]); }
+void hk_ph_insert_tag(Emu *e, X86 *c) { ph_insert_tag(AI(0), AI(1)); E_RET(c->s.r[EAX]); }
+void hk_ph_pitch(Emu *e, X86 *c) { ph_pitch(GPH(uint8_t, A(0), 0xb600), AI(1), AI(2)); E_RET(c->s.r[EAX]); }
+void hk_ph_run(Emu *e, X86 *c) { E_RET((uint32_t)ph_run(GPH(uint8_t, A(0), 0xb600))); }
