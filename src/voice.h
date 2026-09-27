@@ -62,7 +62,7 @@ typedef struct VocSynthState {
 
 // one synthesis request (a unit with its prosody)
 typedef struct VocRequest {
-    int32_t _00;            // 0x00 passed on to voc_pitch_marks, which ignores it
+    GPTR(char) name;        // 0x00 the unit's phone name (passed on to voc_pitch_marks, which ignores it)
     int32_t unit;           // 0x04 unit index; 0 = silence
     float dur;              // 0x08 duration scale (silence: seconds)
     int32_t npoints;        // 0x0c prosody contour points
@@ -98,3 +98,41 @@ void voc_excitation(const float *periods, int nframes, const float *exc, const f
 // assemble the excitation, run the LPC synthesis filter per mark, then the mode's FIR / IIR / effect.
 // Returns 1, or 0 if the unit cannot be decoded or the output does not fit.
 int voc_synth_unit(VocSynthState *s, VocRequest *req);
+
+// the synthesis thread's object; st is the synthesizer proper
+struct Queue;
+struct UnitOut;
+typedef struct VocEngine {
+    int32_t _00;
+    int32_t pcm16;          // 0x04 1: 16-bit output (0: 8-bit)
+    uint32_t rate;          // 0x08 sample rate
+    uint8_t _0c[4];
+    uint32_t msg;           // 0x10 notification message
+    int32_t chunks;         // 0x14 chunks sent since the queue was last empty
+    uint32_t hwnd;          // 0x18
+    uint8_t _1c[4];
+    int32_t effect;         // 0x20 index of the last unit's name in the phone table (-1: none)
+    VocSynthState st;       // 0x24
+    uint32_t thread;        // 0x60 the synthesis thread (SetThreadPriority)
+    uint8_t _64[0x94 - 0x64];
+    uint32_t resample[4];   // 0x94, 0x98, 0x9c, 0xa0 optional sample-rate converters (C++ objects)
+    uint8_t _a4[0x134 - 0xa4];
+    uint32_t ev_stop;       // 0x134
+    uint8_t _138[4];
+    GPTR(struct Queue) in;  // 0x13c
+    GPTR(struct Queue) out; // 0x140
+} VocEngine;
+
+// @0x63674d18 stdcall: index of a phone name (its alphabetic prefix, case-insensitive) in the table
+// at 0x6371c0cc (54 entries); -1 if absent, 0 for an empty name
+int32_t phone_table_index(const char *name);
+// @0x63681cb2 thiscall: synthesize one unit from the unit stage into a new float buffer (grown until it
+// fits), optionally resampled, clipped to the 16-bit range; *n = samples. Returns 0.
+typedef struct FloatBuf { GPTR(float) data; uint32_t bytes; } FloatBuf;
+int32_t voc_synth_request(VocEngine *v, const struct UnitOut *u, FloatBuf *out, int32_t *n);
+// @0x63681b7e thiscall: hand n samples to the audio thread (queue record 6: PCM; preceded by record
+// 0x1d with the effect index), unless stopped; notifies and raises the thread priority when the audio
+// queue is full or five chunks went out
+void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n);
+// a sample-rate converter object's convert method (not decompiled; never reached by the corpus)
+int32_t voc_resample(uint32_t obj, uint32_t method, float *in, GPTR(float) *out, int32_t n);

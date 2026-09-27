@@ -5,6 +5,7 @@
 #include "hooks.h"
 #include "unitsel.h"
 #include "containers.h"
+#include "voice.h"
 #include <string.h>
 
 static uint32_t guest_call(uint32_t pref, int nargs, const uint32_t *args) {
@@ -50,4 +51,18 @@ double lattice_cost_other(uint32_t fn, int32_t a, int32_t b) {
     uint32_t args[2] = { (uint32_t)a, (uint32_t)b };
     emu_call(decomp_emu, fn, 2, args);
     return x86_fpu_pop(emu_cpu(decomp_emu));
+}
+
+int32_t voc_resample(uint32_t obj, uint32_t method, float *in, GPTR(float) *out, int32_t n) {
+    X86 *c = emu_cpu(decomp_emu);
+    uint32_t sp = c->s.r[ESP];
+    c->s.r[ESP] = (sp - 16u) & ~15u;
+    uint32_t g = c->s.r[ESP];
+    memcpy(decomp_guest_mem + g, out, 4);
+    uint32_t args[3] = { host_to_guest_ptr(in), g, (uint32_t)n };
+    c->s.r[ECX] = obj;
+    int32_t r = (int32_t)guest_call(method, 3, args);
+    memcpy(out, decomp_guest_mem + g, 4);
+    c->s.r[ESP] = sp;
+    return r;
 }

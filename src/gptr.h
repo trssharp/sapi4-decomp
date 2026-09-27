@@ -18,6 +18,7 @@ extern uint32_t decomp_load_delta;
 #define CODEADDR(v) ((uint32_t)(v) - decomp_load_delta)
 // a code address of the DLL as the program would store it (hook build: relocated guest address)
 #define DLLCODE(pref) ((uint32_t)(pref) + decomp_load_delta)
+#define GRAW(v) ((uint32_t)(v))   // a pointer field as the 32-bit value the original passes around
 #else
 #define GPTR(T) T *
 #define GP(T, v) ((T *)(v))
@@ -28,5 +29,6 @@ void *decomp_dll_data(uint32_t addr);
 #define DLLVAR(T, addr) ((T *)decomp_dll_data(addr))
 #define CODEADDR(v) ((uint32_t)(uintptr_t)(v))   // extracted tables keep the original addresses
 #define DLLCODE(pref) ((uint32_t)(pref))
+#define GRAW(v) ((uint32_t)(uintptr_t)(v))
 #define LAYOUT(T, field, off)
 #endif

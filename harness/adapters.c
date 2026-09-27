@@ -321,3 +321,9 @@ void hk_unit_span_lookup(Emu *e, X86 *c) {
     E_RET(unit_span_lookup(AI(0), AI(1), GPH(uint32_t, A(2), 4), GPH(int32_t, A(3), 4), GPH(int32_t, A(4), 4)));
 }
 void hk_unit_lattice(Emu *e, X86 *c) { E_RET(unit_lattice(THIS(UnitStage), GPH(uint32_t, A(0), 4), GPH(int32_t, A(1), 4))); }
+
+void hk_phone_table_index(Emu *e, X86 *c) { E_RET(phone_table_index(A(0) ? (const char *)x86_ptr(c, A(0), 1) : NULL)); }
+void hk_voc_synth_request(Emu *e, X86 *c) {
+    E_RET(voc_synth_request(THIS(VocEngine), GPH(UnitOut, A(0), sizeof(UnitOut)), GPH(FloatBuf, A(1), 8), GPH(int32_t, A(2), 4)));
+}
+void hk_voc_send_audio(Emu *e, X86 *c) { voc_send_audio(THIS(VocEngine), A(0) ? GPH(FloatBuf, A(0), 8) : NULL, AI(1)); }

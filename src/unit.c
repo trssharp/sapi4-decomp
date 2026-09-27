@@ -8,7 +8,11 @@
 #include "lpc.h"
 #include "x87.h"
 #include "effect.h"
+#include "queue.h"
+#include "unitsel.h"
+#include "vcrt.h"
 #include <string.h>
+#include <math.h>
 
 LAYOUT(VocVoice, noise, 0x3c);
 LAYOUT(VocSynthState, flags, 0x24);
@@ -251,7 +255,7 @@ int voc_synth_unit(VocSynthState *s, VocRequest *req) {
     float *signs = vc_malloc(size);
     float *lens = vc_malloc(size);
     int count = voc_pitch_marks(periods, nframes, lens, dscale, s->rate, GP(const float, req->times), pitch,
-                                req->npoints, s->fixed_rate, req->_00, frames, signs);
+                                req->npoints, s->fixed_rate, (int)GRAW(req->name), frames, signs);
     req->produced = 0;
     for (int j = 0; j < count; j++) req->produced = x87_ftol((double)req->produced + x87_abs_cmp0(lens[j]));
     if (req->produced > s->cap) {
@@ -281,4 +285,119 @@ int voc_synth_unit(VocSynthState *s, VocRequest *req) {
     vc_free(signs);
     voc_unit_free(GP(VocUnit, s->unit));
     return ok;
+}
+
+LAYOUT(VocEngine, st, 0x24);
+LAYOUT(VocEngine, resample, 0x94);
+LAYOUT(VocEngine, out, 0x140);
+
+int32_t phone_table_index(const char *name) {
+    if (!name || !*name) return 0;
+    int32_t len = 0;
+    while (vc_isalpha((signed char)name[len])) len++;
+    const char *e = DLLVAR(const char, 0x6371c0cc);
+    for (int32_t i = 0; e < DLLVAR(const char, 0x6371c504); i++, e += 0x14)
+        if (vc_strnicmp(name, e, (size_t)(uint32_t)len) == 0) return i;
+    return -1;
+}
+
+int32_t voc_synth_request(VocEngine *v, const UnitOut *u, FloatBuf *out, int32_t *n) {
+    float rate = (float)(double)v->rate;
+    uint32_t bytes = (uint32_t)x87_ftol(ceil((double)rate * u->dur * 1.5) * 4.0);
+    out->bytes = bytes;
+    float *data = vc_malloc(bytes);
+    GPSET(out->data, data);
+    memset(data, 0, out->bytes);
+    v->effect = phone_table_index(u->name);
+    VocRequest req;
+    char *name = vc_malloc(0xf);
+    GPSET(req.name, name);
+    strcpy(name, u->name);
+    req.unit = u->unit;
+    req.npoints = u->nstates;
+    float *times = vc_malloc((size_t)(uint32_t)(req.npoints * 4));
+    float *pitch = vc_malloc((size_t)(uint32_t)(req.npoints * 4));
+    float *gains = vc_malloc((size_t)(uint32_t)(req.npoints * 4));
+    GPSET(req.times, times);
+    GPSET(req.pitch, pitch);
+    GPSET(req.gains, gains);
+    req.dur = u->dur;
+    for (int32_t k = 0; k < req.npoints; k++) {
+        times[k] = (float)((double)u->a[k] * req.dur * rate);
+        pitch[k] = (float)u->b[k];
+        gains[k] = u->c[k];
+    }
+    GPSET(v->st.out, GP(float, out->data));
+    v->st.cap = (int32_t)(out->bytes >> 2);
+    v->st.fixed_rate = 1;
+    while (!voc_synth_unit(&v->st, &req)) {
+        out->bytes *= 2;
+        float *d = vc_realloc(GP(void, out->data), out->bytes);
+        GPSET(out->data, d);
+        GPSET(v->st.out, d);
+        v->st.cap = (int32_t)(out->bytes >> 2);
+    }
+    vc_free(times);
+    vc_free(pitch);
+    vc_free(gains);
+    static const uint32_t order[4] = { 0, 2, 3, 1 };   // 0x94, 0x9c, 0xa0, 0x98
+    static const uint32_t method[4] = { 0x636781cf, 0x63677f07, 0x63678333, 0x6367806b };
+    for (int k = 0; k < 4; k++) {
+        uint32_t obj = v->resample[order[k]];
+        if (!obj) continue;
+        GPTR(float) nb = 0;
+        int32_t r = voc_resample(obj, method[k], GP(float, out->data), &nb, req.produced);
+        req.produced = r;
+        vc_free(GP(void, out->data));
+        out->data = nb;
+        out->bytes = (uint32_t)req.produced * 4u;
+        break;
+    }
+    *n = req.produced;
+    v->st.out = 0;
+    float *x = GP(float, out->data);
+    for (int32_t i = 0; i < req.produced; i++) {
+        if (!x87_jbe(x[i], 32767.0)) x[i] = 32767.0f;
+        else if (!x87_jae(x[i], -32768.0)) x[i] = -32768.0f;
+    }
+    vc_free(name);
+    return 0;
+}
+
+void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n) {
+    if (!pcm || !n) return;
+    QItem *it = vc_malloc(0x14);
+    if (!it) return;
+    memset(it, 0, 0x14);
+    if (vc_WaitForSingleObject(v->ev_stop, 0) == 0) {
+        vc_free(it);
+        return;
+    }
+    it->v[0] = 0x1d;
+    it->v[1] = (uint32_t)v->effect;
+    queue_push(GP(Queue, v->out), it);
+    memset(it, 0, 0x14);
+    it->v[0] = 6;
+    if (v->pcm16) {
+        uint32_t bytes = (uint32_t)n * 2u;
+        void *d = vc_malloc(bytes);
+        GPSET(it->v[3], d);
+        it->v[4] = bytes;
+        dsp_to_pcm16(d, GP(const float, pcm->data), n);
+    } else {
+        void *d = vc_malloc((size_t)(uint32_t)n);
+        GPSET(it->v[3], d);
+        it->v[4] = (uint32_t)n;
+        dsp_to_pcm8(d, GP(const float, pcm->data), n);
+    }
+    if (queue_count(GP(Queue, v->out)) == 0) v->chunks = 0;
+    queue_push(GP(Queue, v->out), it);
+    v->chunks++;
+    if (v->chunks == 5 || queue_is_full(GP(Queue, v->out))) {
+        vc_PostMessageA(v->hwnd, v->msg, 0, 0);
+        const uint32_t *pr = (const uint32_t *)((const uint8_t *)v + 0xc4);
+        uint32_t lvl = *(const uint32_t *)((const uint8_t *)v + 0x118);
+        vc_SetThreadPriority(v->thread, (int32_t)pr[lvl * 3]);
+    }
+    vc_free(it);
 }
