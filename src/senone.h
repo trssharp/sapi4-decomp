@@ -24,12 +24,15 @@ typedef struct TreeRoot { uint16_t present; uint16_t _2; GPTR(const TreeNode) no
 typedef struct SenoneTree {
     GPTR(const SenoneHeader) hdr;   // 0x00
     GPTR(const PhoneSet) phones;    // 0x04
-    int32_t _08[3];
+    int32_t max_senone;             // 0x08
+    int32_t _0c[2];
     int32_t ignore_position;        // 0x14
     int32_t sil;                    // 0x18 phone used for silence / "+" contexts
     int32_t word_end_right;         // 0x1c right context at a word end (< 0: keep)
     uint32_t flags;                 // 0x20 bit 1: questions also test the centre phone
-    int32_t _24[5];
+    int32_t _24[3];
+    GPTR(const uint16_t) phone_units;  // 0x30 per phone (4 bytes each): first unit of the phone
+    int32_t _34;
     GPTR(const int8_t) nstates;     // 0x38 per model
     int32_t _3c;
     GPTR(const int8_t) model;       // 0x40 per phone

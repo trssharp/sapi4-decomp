@@ -23,3 +23,10 @@ int32_t tree_query(const SenoneTree *t, TreeQuery *q) {
     c->s.r[ESP] = sp;
     return r;
 }
+
+static uint32_t guest_thiscall(uint32_t pref, const void *self, int nargs, const uint32_t *args) {
+    emu_cpu(decomp_emu)->s.r[ECX] = host_to_guest_ptr(self);
+    return guest_call(pref, nargs, args);
+}
+void unit_prosody_a(UnitStage *u, int n) { uint32_t a[1] = { (uint32_t)n }; guest_thiscall(0x63686c7d, u, 1, a); }
+void unit_prosody_b(UnitStage *u, int n) { uint32_t a[1] = { (uint32_t)n }; guest_thiscall(0x63686905, u, 1, a); }

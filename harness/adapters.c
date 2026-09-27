@@ -223,3 +223,9 @@ void hk_senone_lookup(Emu *e, X86 *c) {
 void hk_phone_fixups(Emu *e, X86 *c) { int n = AI(1); phone_fixups(n > 0 ? GPH(char, A(0), 100u * n) : NULL, n); }
 
 void hk_unit_select(Emu *e, X86 *c) { int n = AI(1); unit_select(THIS(UnitStage), n > 0 ? GPH(char, A(0), 100u * n + 1) : (char *)c->mem + A(0), n); }
+
+void hk_unit_prosody(Emu *e, X86 *c) {
+    int n = AI(1);
+    E_RET(unit_prosody(THIS(UnitStage), n > 0 ? GPH(PhoneIn, A(0), sizeof(PhoneIn) * n) : NULL, n, GPH(int32_t, A(2), 4),
+                       AI(3), GPH(UnitOutBuf, A(4), sizeof(UnitOutBuf))));
+}

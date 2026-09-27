@@ -24,3 +24,10 @@ static inline double x87_abs_cmp0(float x) {
     double v = x;
     return (v >= 0.0) ? v : -v;
 }
+// Conditional jumps after fcom a, b (ST0 = a), NaN-exact: an unordered compare sets C0 and C3, so it
+// reads as "below" and as "equal" at the same time.
+static inline int x87_je(double a, double b) { return !(a < b) && !(a > b); }   // equal or unordered
+static inline int x87_jb(double a, double b) { return !(a >= b); }              // below or unordered
+static inline int x87_jbe(double a, double b) { return !(a > b); }              // below, equal or unordered
+static inline int x87_ja(double a, double b) { return a > b; }
+static inline int x87_jae(double a, double b) { return a >= b; }
