@@ -18,6 +18,8 @@ extern uint32_t decomp_load_delta;
 #define GP(T, v) ((T *)(v))
 #define GPSET(field, p) ((field) = (p))
 // portable build: the DLL's data tables are not extracted yet
-#define DLLVAR(T, addr) (_Static_assert(0, "DLL data not extracted yet"), (T *)0)
+// (no definition yet: a portable build that uses one fails to link until data extraction exists)
+void *decomp_dll_data(uint32_t addr);
+#define DLLVAR(T, addr) ((T *)decomp_dll_data(addr))
 #define LAYOUT(T, field, off)
 #endif

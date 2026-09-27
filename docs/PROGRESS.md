@@ -203,9 +203,10 @@ the output) and `src/x87.h` the x87 conversions (fistp, _ftol, the |x| idiom).
 
 **Pointers.** The emulator is 32-bit guest on a 64-bit host, so C structs holding pointers cannot be
 shared between guest and native code the way OpenTV's 32-bit hook build shares them. Leaf functions
-take guest pointers translated at the adapter (done). For objects with pointer fields the plan is a
-field type that is a 32-bit guest address in the hook build and a real pointer in the portable build
-(`GPTR(T)` with get/set helpers), so the same source compiles both ways.
+take guest pointers translated at the adapter. Objects with pointer fields use `GPTR(T)` (src/gptr.h):
+a 32-bit guest address in the hook build and a real pointer in the portable build, so the same source
+compiles both ways (`clang -fsyntax-only src/*.c` without DECOMP_HOOK passes; there is no portable
+driver yet, so nothing links it).
 
 **Threads.** The engine runs three worker threads with events and critical sections. The portable
 library will want a single-threaded pipeline (as OpenTV's did); the hook build keeps the original
