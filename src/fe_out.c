@@ -396,3 +396,8 @@ int32_t fe_thread(FrontEnd *fe) {
     vc_CoUninitialize();
     return 0;
 }
+
+int32_t fe_get_pitch(const FrontEnd *fe, uint16_t *v) {
+    *v = (uint16_t)fe->pitch_set;
+    return 0;
+}

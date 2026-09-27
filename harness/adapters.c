@@ -825,3 +825,5 @@ void hk_unit_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(unit_ctor(THIS(UnitStage
 void hk_voc_state_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(voc_state_ctor(THIS(VocSynthState)))); }
 void hk_empty_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(empty_ctor(GPH(uint8_t, c->s.r[ECX], 1)))); }
 void hk_voc_engine_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(voc_engine_ctor(THIS(VocEngine)))); }
+void hk_fe_get_pitch(Emu *e, X86 *c) { E_RET((uint32_t)fe_get_pitch(THIS(FrontEnd), GPH(uint16_t, A(0), 2))); }
+void hk_unit_get_rate(Emu *e, X86 *c) { E_RET((uint32_t)unit_get_rate(THIS(UnitStage), GPH(uint32_t, A(0), 4))); }

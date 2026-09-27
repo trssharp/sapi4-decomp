@@ -903,3 +903,8 @@ done:
     }
     return result;
 }
+
+int32_t unit_get_rate(const UnitStage *u, uint32_t *r) {
+    *r = u->rate;
+    return 0;
+}

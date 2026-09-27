@@ -3,7 +3,7 @@
 // text run through the three stages' own item handlers and thread loops, one stage after another,
 // the PCM the synthesizer hands to the audio side written to a WAV file. The DLL's data comes from
 // the user's copy of msttssyn.dll (or a baked image); the voice files are read from the directory.
-//   port_render <dir> [-m mode] [-t] [-l] [-o out.wav] text...
+//   port_render <dir> [-m mode] [-t] [-l] [-p pitch] [-s wpm] [-o out.wav] text...
 #include "dllimage.h"
 #include "voices.h"
 #include "voice.h"
@@ -69,6 +69,7 @@ static void wide_to_char(char *out, size_t cap, const uint16_t *w) {
 int main(int argc, char **argv) {
     const char *mode_name = "Sam", *out = "out.wav";
     int tags = 0, list = 0, a = 1;
+    long pitch = -1, speed = -1;
     if (argc < 2) {
         fprintf(stderr, "usage: port_render <dir with the voices%s> [-m mode] [-t] [-l] [-o out.wav] text...\n",
 #ifdef DLL_BAKED
@@ -92,6 +93,8 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[a], "-m") && a + 1 < argc) mode_name = argv[++a];
         else if (!strcmp(argv[a], "-o") && a + 1 < argc) out = argv[++a];
         else if (!strcmp(argv[a], "-t")) tags = 1;
+        else if (!strcmp(argv[a], "-p") && a + 1 < argc) pitch = atol(argv[++a]);
+        else if (!strcmp(argv[a], "-s") && a + 1 < argc) speed = atol(argv[++a]);
         else if (!strcmp(argv[a], "-l")) list = 1;
         else {
             if (*text) strncat(text, " ", sizeof text - strlen(text) - 1);
@@ -143,6 +146,36 @@ int main(int argc, char **argv) {
         return 2;
     }
     vc_com_release(stg);
+    // what a SAPI client does next (the emulator harness does exactly this): read the pitch and speed,
+    // probe their limits by setting the extremes and reading them back, restore the defaults; then set
+    // the ones asked for, clamped to the limits, when they differ (ITTSAttributes::PitchSet / SpeedSet
+    // call these directly, in the client's thread)
+    uint16_t p_def, p_min, p_max;
+    uint32_t s_def, s_min, s_max;
+    fe_get_pitch(fe, &p_def);
+    unit_get_rate(u, &s_def);
+    fe_set_pitch_level(fe, 0);
+    fe_get_pitch(fe, &p_min);
+    fe_set_pitch_level(fe, 0xffff);
+    fe_get_pitch(fe, &p_max);
+    fe_set_pitch_level(fe, p_def);
+    unit_set_rate(u, 0);
+    unit_get_rate(u, &s_min);
+    unit_set_rate(u, 0xffffffffu);
+    unit_get_rate(u, &s_max);
+    unit_set_rate(u, s_def);
+    if (pitch >= 0) {
+        unsigned pv = (unsigned)pitch;
+        if (pv < p_min) pv = p_min;
+        if (pv > p_max) pv = p_max;
+        if (pv != p_def) fe_set_pitch_level(fe, (uint16_t)pv);
+    }
+    if (speed >= 0) {
+        unsigned sv = (unsigned)speed;
+        if (sv < s_min) sv = s_min;
+        if (sv > s_max) sv = s_max;
+        if (sv != s_def) unit_set_rate(u, sv);
+    }
     // the text, as the front end's thread receives it
     size_t n = strlen(text);
     uint16_t *w = vc_malloc(2 * (n + 1));

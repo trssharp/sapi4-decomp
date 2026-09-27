@@ -145,6 +145,8 @@ void unit_rate_update(UnitStage *u);
 // @0x63687d4b thiscall: set the rate (-1: 3 x default, 0: 30; otherwise 30..3 x default, else
 // E_UNEXPECTED), notify (message wparam 2) and update
 int32_t unit_set_rate(UnitStage *u, uint32_t r);
+// @0x63687e15 thiscall: the rate; 0
+int32_t unit_get_rate(const UnitStage *u, uint32_t *r);
 // @0x63687de5 thiscall: back to the default rate
 int32_t unit_reset_rate(UnitStage *u);
 // @0x63687fbb thiscall: set the output scale (low 16 bits), notify (wparam 3)

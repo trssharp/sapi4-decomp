@@ -75,6 +75,7 @@ int32_t free_if2(void *p);                                              // @0x63
 int32_t fe_after_feed(FrontEnd *fe, int32_t r);
 int32_t fe_continue(FrontEnd *fe);                                      // @0x63680c3f thiscall
 int32_t fe_set_pitch_level(FrontEnd *fe, uint16_t v);                   // @0x636836b8 thiscall
+int32_t fe_get_pitch(const FrontEnd *fe, uint16_t *v);                  // @0x63683791 thiscall: the pitch set; 0
 // @0x636837a4 thiscall: a phrase of n phones into the phone list for the unit stage, index escapes back
 // into tag records, "\Tp" pronunciations through the phone converter; queued
 int32_t fe_phrase_out(FrontEnd *fe, int32_t n);

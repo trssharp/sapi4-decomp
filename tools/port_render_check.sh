@@ -1,7 +1,7 @@
 #!/bin/sh
 # The portable build end to end (build/port_render: no emulator) against the golden renders: every
 # voice mode, both golden texts, PCM hashes compared with tools/golden_hashes.txt (made by the
-# original in the emulator). The speed / pitch renders of the golden set are not covered yet.
+# original in the emulator), and the golden set's speed / pitch renders.
 set -u
 cd "$(dirname "$0")/.."
 BIN=${1:-build/port_render}
@@ -43,4 +43,15 @@ while read -r mode; do
     if [ "$want" != "$got" ]; then echo "DIFF ${slug}_$k: want '$want' got '$got'"; fail=$((fail + 1)); fi
   done
 done < "$OUT/modes.txt"
-if [ $fail = 0 ]; then echo "PORT-RENDER: all $n renders ($(wc -l < "$OUT/modes.txt" | tr -d ' ') modes x 2 texts) identical to the golden renders, with no emulator"; else echo "PORT-RENDER: $fail of $n differ"; exit 1; fi
+for mode in "Sam" "Mary in Hall" "Male Whisper" "Mike (for Telephone)"; do
+  slug=$(echo "$mode" | tr 'A-Z ' 'a-z_' | tr -d '()')
+  "$BIN" data/msttsl -m "$mode" -s 300 -p 140 -o "$OUT/${slug}_fastpitch.wav" "$T1" 2>/dev/null
+  "$BIN" data/msttsl -m "$mode" -s 60 -p 60 -o "$OUT/${slug}_slowlow.wav" "$T1" 2>/dev/null
+  for k in fastpitch slowlow; do
+    n=$((n + 1))
+    want=$(grep " ${slug}_$k.wav\$" tools/golden_hashes.txt)
+    got=$(python3 tools/pcmhash.py "$OUT/${slug}_$k.wav" 2>/dev/null)
+    if [ "$want" != "$got" ]; then echo "DIFF ${slug}_$k: want '$want' got '$got'"; fail=$((fail + 1)); fi
+  done
+done
+if [ $fail = 0 ]; then echo "PORT-RENDER: all $n golden renders (19 modes x 2 texts, 4 modes x speed/pitch extremes) identical, with no emulator"; else echo "PORT-RENDER: $fail of $n differ"; exit 1; fi
