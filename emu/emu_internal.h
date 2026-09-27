@@ -148,13 +148,7 @@ EmuHostFn emu_lookup_import(Emu *e, const char *dll, const char *name, int *argb
 void emu_set_last_error(Emu *e, uint32_t err);
 
 // CP1252
-extern const uint16_t cp1252_to_uni[256];
-uint8_t uni_to_cp1252(uint16_t u);
-int cp1252_isalpha(uint8_t ch);
-int cp1252_isupper(uint8_t ch);
-int cp1252_islower(uint8_t ch);
-uint8_t cp1252_toupper(uint8_t ch);
-uint8_t cp1252_tolower(uint8_t ch);
+#include "vcrt.h"   // CP1252 tables and conversions (src/vcrt.c)
 
 // printf/scanf with guest varargs
 int emu_format(Emu *e, char *out, size_t outsz, const char *fmt, uint32_t va, int wide_fmt);

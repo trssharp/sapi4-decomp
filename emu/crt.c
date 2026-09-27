@@ -1,5 +1,6 @@
 // MSVCRT.DLL subset, implemented natively on guest memory.
 #include "emu_internal.h"
+#include "vcrt.h"
 #include <ctype.h>
 #include <math.h>
 
@@ -8,70 +9,7 @@
 #define S(a) emu_str(e, (a))
 #define PTR(a, n) ((char *)emu_ptr(e, (a), (n)))
 
-// ------------------------------------------------------------------ CP1252
-const uint16_t cp1252_to_uni[256] = {
-#define R8(b) b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7
-    R8(0x00), R8(0x08), R8(0x10), R8(0x18), R8(0x20), R8(0x28), R8(0x30), R8(0x38),
-    R8(0x40), R8(0x48), R8(0x50), R8(0x58), R8(0x60), R8(0x68), R8(0x70), R8(0x78),
-    0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
-    0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
-    R8(0xA0), R8(0xA8), R8(0xB0), R8(0xB8), R8(0xC0), R8(0xC8), R8(0xD0), R8(0xD8),
-    R8(0xE0), R8(0xE8), R8(0xF0), R8(0xF8),
-#undef R8
-};
-uint8_t uni_to_cp1252(uint16_t u) {
-    if (u < 0x80 || (u >= 0xA0 && u <= 0xFF)) return (uint8_t)u;
-    for (int i = 0x80; i < 0xA0; i++) if (cp1252_to_uni[i] == u) return (uint8_t)i;
-    return '?';
-}
-int cp1252_isupper(uint8_t ch) {
-    return (ch >= 'A' && ch <= 'Z') || ch == 0x8A || ch == 0x8C || ch == 0x8E || ch == 0x9F ||
-           (ch >= 0xC0 && ch <= 0xDE && ch != 0xD7);
-}
-int cp1252_islower(uint8_t ch) {
-    return (ch >= 'a' && ch <= 'z') || ch == 0x83 || ch == 0x9A || ch == 0x9C || ch == 0x9E || ch == 0xAA || ch == 0xB5 ||
-           ch == 0xBA || (ch >= 0xDF && ch != 0xF7);
-}
-int cp1252_isalpha(uint8_t ch) { return cp1252_isupper(ch) || cp1252_islower(ch); }
-uint8_t cp1252_toupper(uint8_t ch) {
-    if (ch >= 'a' && ch <= 'z') return ch - 32;
-    if (ch == 0x9A || ch == 0x9C || ch == 0x9E) return ch - 16;
-    if (ch == 0xFF) return 0x9F;
-    if (ch >= 0xE0 && ch <= 0xFE && ch != 0xF7) return ch - 32;
-    return ch;
-}
-uint8_t cp1252_tolower(uint8_t ch) {
-    if (ch >= 'A' && ch <= 'Z') return ch + 32;
-    if (ch == 0x8A || ch == 0x8C || ch == 0x8E) return ch + 16;
-    if (ch == 0x9F) return 0xFF;
-    if (ch >= 0xC0 && ch <= 0xDE && ch != 0xD7) return ch + 32;
-    return ch;
-}
-
-// ------------------------------------------------------------------ C-locale ctype (MSVCRT _ctype)
-#define _UPPER 0x1
-#define _LOWER 0x2
-#define _DIGIT 0x4
-#define _SPACE 0x8
-#define _PUNCT 0x10
-#define _CONTROL 0x20
-#define _BLANK 0x40
-#define _HEX 0x80
-#define _ALPHA_BIT 0x100
-static uint16_t ctype_of(int ch) {
-    if (ch < 0 || ch > 127) return 0;
-    uint16_t t = 0;
-    if (ch < 32 || ch == 127) t |= _CONTROL;
-    if (ch >= 9 && ch <= 13) t |= _SPACE;
-    if (ch == ' ') t |= _SPACE | _BLANK;
-    if (ch >= '0' && ch <= '9') t |= _DIGIT | _HEX;
-    if (ch >= 'A' && ch <= 'Z') t |= _UPPER | _ALPHA_BIT | (ch <= 'F' ? _HEX : 0);
-    if (ch >= 'a' && ch <= 'z') t |= _LOWER | _ALPHA_BIT | (ch <= 'f' ? _HEX : 0);
-    if (ch > 32 && ch < 127 && !(t & (_DIGIT | _UPPER | _LOWER))) t |= _PUNCT;
-    return t;
-}
-static inline int c_tolower(int ch) { return (ch >= 'A' && ch <= 'Z') ? ch + 32 : ch; }
-static inline int c_toupper(int ch) { return (ch >= 'a' && ch <= 'z') ? ch - 32 : ch; }
+// CP1252 and the C-locale ctype live in src/vcrt.c (shared with the decompiled code)
 
 // ------------------------------------------------------------------ memory
 static void h_malloc(Emu *e, X86 *c) { E_RET(emu_malloc(e, A(0))); }
@@ -86,7 +24,7 @@ static void h_calloc(Emu *e, X86 *c) {
 static void h_realloc(Emu *e, X86 *c) { E_RET(emu_realloc(e, A(0), A(1))); }
 static void h_memcpy(Emu *e, X86 *c) { uint32_t n = A(2); if (n) memmove(PTR(A(0), n), PTR(A(1), n), n); E_RET(A(0)); }
 static void h_memset(Emu *e, X86 *c) { uint32_t n = A(2); if (n) memset(PTR(A(0), n), (int)(A(1) & 0xFF), n); E_RET(A(0)); }
-static void h_memcmp(Emu *e, X86 *c) { uint32_t n = A(2); int r = n ? memcmp(PTR(A(0), n), PTR(A(1), n), n) : 0; E_RET(r < 0 ? -1 : r > 0); }
+static void h_memcmp(Emu *e, X86 *c) { uint32_t n = A(2); E_RET(n ? vc_memcmp(PTR(A(0), n), PTR(A(1), n), n) : 0); }
 static void h_heapchk(Emu *e, X86 *c) { (void)e; E_RET(-2); }
 
 // ------------------------------------------------------------------ strings
@@ -103,25 +41,17 @@ static void h_strncpy(Emu *e, X86 *c) {
     E_RET(A(0));
 }
 static int sgn(int r) { return r < 0 ? -1 : r > 0; }
-static void h_strcmp(Emu *e, X86 *c) { E_RET(sgn(strcmp(S(A(0)), S(A(1))))); }
-static void h_strncmp(Emu *e, X86 *c) { E_RET(sgn(strncmp(S(A(0)), S(A(1)), A(2)))); }
-static int c_stricmp(const char *a, const char *b, size_t n) {
-    for (size_t i = 0; i < n; i++) {
-        int x = c_tolower((uint8_t)a[i]), y = c_tolower((uint8_t)b[i]);
-        if (x != y) return x - y;
-        if (!x) return 0;
-    }
-    return 0;
-}
+static void h_strcmp(Emu *e, X86 *c) { E_RET(vc_strcmp(S(A(0)), S(A(1)))); }
+static void h_strncmp(Emu *e, X86 *c) { E_RET(vc_strncmp(S(A(0)), S(A(1)), A(2))); }
 static void h_stricmp(Emu *e, X86 *c) {
 #ifndef CV_NO_DEBUG_ENV
     static int trace = -1;
     if (trace < 0) trace = getenv("SAPI4_TRACE_STR") != NULL;
     if (trace) fprintf(stderr, "  _stricmp('%s', '%s') @%llu\n", S(A(0)), S(A(1)), (unsigned long long)c->icount);
 #endif
-    E_RET(sgn(c_stricmp(S(A(0)), S(A(1)), (size_t)-1)));
+    E_RET(vc_stricmp(S(A(0)), S(A(1))));
 }
-static void h_strnicmp(Emu *e, X86 *c) { E_RET(sgn(c_stricmp(S(A(0)), S(A(1)), A(2)))); }
+static void h_strnicmp(Emu *e, X86 *c) { E_RET(vc_strnicmp(S(A(0)), S(A(1)), A(2))); }
 static void h_strchr(Emu *e, X86 *c) {
     const char *s = S(A(0)); int ch = (int)(A(1) & 0xFF);
     const char *p = ch ? strchr(s, ch) : s + strlen(s);
@@ -130,7 +60,7 @@ static void h_strchr(Emu *e, X86 *c) {
 static void h_strpbrk(Emu *e, X86 *c) { const char *s = S(A(0)); const char *p = strpbrk(s, S(A(1))); E_RET(p ? A(0) + (uint32_t)(p - s) : 0); }
 static void h_strspn(Emu *e, X86 *c) { E_RET(strspn(S(A(0)), S(A(1)))); }
 static void h_strcspn(Emu *e, X86 *c) { E_RET(strcspn(S(A(0)), S(A(1)))); }
-static void h_strupr(Emu *e, X86 *c) { char *s = (char *)S(A(0)); for (; *s; s++) *s = (char)c_toupper((uint8_t)*s); E_RET(A(0)); }
+static void h_strupr(Emu *e, X86 *c) { char *s = (char *)S(A(0)); for (; *s; s++) *s = (char)vc_toupper((uint8_t)*s); E_RET(A(0)); }
 static void h_strrev(Emu *e, X86 *c) {
     char *s = (char *)S(A(0)); size_t n = strlen(s);
     for (size_t i = 0; i < n / 2; i++) { char t = s[i]; s[i] = s[n - 1 - i]; s[n - 1 - i] = t; }
@@ -150,11 +80,11 @@ static void h_strtok(Emu *e, X86 *c) {
     else e->cur->strtok_next = 0;
     E_RET(tok);
 }
-static void h_tolower(Emu *e, X86 *c) { (void)e; int ch = (int)A(0); E_RET((ch >= 0 && ch < 256) ? c_tolower(ch) : ch); }
-static void h_toupper(Emu *e, X86 *c) { (void)e; int ch = (int)A(0); E_RET((ch >= 0 && ch < 256) ? c_toupper(ch) : ch); }
-static void h_isalpha(Emu *e, X86 *c) { (void)e; E_RET(ctype_of((int)A(0)) & (_UPPER | _LOWER | _ALPHA_BIT)); }
-static void h_isdigit(Emu *e, X86 *c) { (void)e; E_RET(ctype_of((int)A(0)) & _DIGIT); }
-static void h_isctype(Emu *e, X86 *c) { (void)e; E_RET(ctype_of((int)A(0)) & A(1)); }
+static void h_tolower(Emu *e, X86 *c) { (void)e; int ch = (int)A(0); E_RET((ch >= 0 && ch < 256) ? vc_tolower(ch) : ch); }
+static void h_toupper(Emu *e, X86 *c) { (void)e; int ch = (int)A(0); E_RET((ch >= 0 && ch < 256) ? vc_toupper(ch) : ch); }
+static void h_isalpha(Emu *e, X86 *c) { (void)e; E_RET(vc_ctype((int)A(0)) & (_UPPER | _LOWER | _ALPHA_BIT)); }
+static void h_isdigit(Emu *e, X86 *c) { (void)e; E_RET(vc_ctype((int)A(0)) & _DIGIT); }
+static void h_isctype(Emu *e, X86 *c) { (void)e; E_RET(vc_ctype((int)A(0)) & A(1)); }
 static void h_atoi(Emu *e, X86 *c) { E_RET((uint32_t)(int32_t)strtol(S(A(0)), NULL, 10)); }
 static void h_atof(Emu *e, X86 *c) { x86_fpu_push(c, strtod(S(A(0)), NULL)); }
 static void h_abs(Emu *e, X86 *c) { (void)e; int32_t v = (int32_t)A(0); E_RET(v < 0 ? -(uint32_t)v : (uint32_t)v); }
@@ -183,8 +113,8 @@ static void h_wcsicmp(Emu *e, X86 *c) {
     size_t n1, n2; const uint16_t *a = emu_wstr(e, A(0), &n1), *b = emu_wstr(e, A(1), &n2);
     for (size_t i = 0;; i++) {
         int x = a[i], y = b[i];
-        if (x < 128) x = c_tolower(x);
-        if (y < 128) y = c_tolower(y);
+        if (x < 128) x = vc_tolower(x);
+        if (y < 128) y = vc_tolower(y);
         if (x != y) { E_RET(x < y ? -1 : 1); return; }
         if (!x) { E_RET(0); return; }
     }
@@ -564,13 +494,13 @@ static void h_sscanf(Emu *e, X86 *c) {
 }
 
 // ------------------------------------------------------------------ more (TruVoice)
-static void h_islower(Emu *e, X86 *c) { (void)e; E_RET(ctype_of((int)A(0)) & _LOWER); }
-static void h_isupper(Emu *e, X86 *c) { (void)e; E_RET(ctype_of((int)A(0)) & _UPPER); }
-static void h_isalnum(Emu *e, X86 *c) { (void)e; E_RET(ctype_of((int)A(0)) & (_UPPER | _LOWER | _DIGIT | _ALPHA_BIT)); }
-static void h_isspace(Emu *e, X86 *c) { (void)e; E_RET(ctype_of((int)A(0)) & _SPACE); }
+static void h_islower(Emu *e, X86 *c) { (void)e; E_RET(vc_ctype((int)A(0)) & _LOWER); }
+static void h_isupper(Emu *e, X86 *c) { (void)e; E_RET(vc_ctype((int)A(0)) & _UPPER); }
+static void h_isalnum(Emu *e, X86 *c) { (void)e; E_RET(vc_ctype((int)A(0)) & (_UPPER | _LOWER | _DIGIT | _ALPHA_BIT)); }
+static void h_isspace(Emu *e, X86 *c) { (void)e; E_RET(vc_ctype((int)A(0)) & _SPACE); }
 static void h_atol(Emu *e, X86 *c) { E_RET((uint32_t)(int32_t)strtol(S(A(0)), NULL, 10)); }
 static void h_mbscmp(Emu *e, X86 *c) { E_RET(sgn(strcmp(S(A(0)), S(A(1))))); }   // unsigned byte compare, like strcmp
-static void h_strlwr(Emu *e, X86 *c) { char *s = (char *)S(A(0)); for (; *s; s++) *s = (char)c_tolower((uint8_t)*s); E_RET(A(0)); }
+static void h_strlwr(Emu *e, X86 *c) { char *s = (char *)S(A(0)); for (; *s; s++) *s = (char)vc_tolower((uint8_t)*s); E_RET(A(0)); }
 static void h_strncat(Emu *e, X86 *c) {
     const char *src = S(A(1)); size_t d = strlen(S(A(0))), n = strlen(src);
     if (n > A(2)) n = A(2);
@@ -751,7 +681,7 @@ void emu_register_crt_apis(void) { emu_add_apis(crt_apis, (int)(sizeof crt_apis 
 void emu_register_crt(Emu *e) {
     // data imports
     e->ctype_table = emu_static(e, 257 * 2);
-    for (int i = -1; i < 256; i++) wr16(&e->cpu, e->ctype_table + 2u * (uint32_t)(i + 1), ctype_of(i));
+    for (int i = -1; i < 256; i++) wr16(&e->cpu, e->ctype_table + 2u * (uint32_t)(i + 1), vc_ctype(i));
     e->pctype_var = emu_static(e, 4);
     wr32(&e->cpu, e->pctype_var, e->ctype_table + 2);
     e->mb_cur_max = emu_static(e, 4);

@@ -38,43 +38,11 @@ static void h_lstrcpynA(Emu *e, X86 *c) {
 }
 static void h_lstrlenA(Emu *e, X86 *c) { E_RET(A(0) ? strlen(S(A(0))) : 0); }
 
-// Approximation of the Win32 "word sort" used by CompareStringA/lstrcmp(i)A: hyphen and apostrophe
-// are ignored on the first pass; case differences only break ties (lowercase first).
-static int word_weight_cmp(const uint8_t *a, int na, const uint8_t *b, int nb, int ignore_case) {
-    int i = 0, j = 0;
-    for (;;) {
-        while (i < na && (a[i] == '-' || a[i] == '\'')) i++;
-        while (j < nb && (b[j] == '-' || b[j] == '\'')) j++;
-        if (i >= na || j >= nb) break;
-        int x = cp1252_tolower(a[i]), y = cp1252_tolower(b[j]);
-        if (x != y) return x < y ? -1 : 1;
-        i++; j++;
-    }
-    if (i < na) return 1;
-    if (j < nb) return -1;
-    if (!ignore_case) {
-        // tie-break on case: lowercase sorts before uppercase
-        for (i = 0, j = 0; i < na && j < nb; i++, j++) {
-            if (a[i] != b[j]) {
-                int ua = cp1252_isupper(a[i]), ub = cp1252_isupper(b[j]);
-                if (ua != ub) return ua ? 1 : -1;
-            }
-        }
-    }
-    // tie-break on the ignored punctuation
-    int la = 0, lb = 0;
-    for (i = 0; i < na; i++) la += a[i] == '-' || a[i] == '\'';
-    for (j = 0; j < nb; j++) lb += b[j] == '-' || b[j] == '\'';
-    if (la != lb) return la < lb ? -1 : 1;
-    return 0;
-}
 static void h_lstrcmpA(Emu *e, X86 *c) {
-    const char *a = S(A(0)), *b = S(A(1));
-    E_RET((uint32_t)word_weight_cmp((const uint8_t *)a, (int)strlen(a), (const uint8_t *)b, (int)strlen(b), 0));
+    E_RET((uint32_t)vc_lstrcmpA(S(A(0)), S(A(1))));
 }
 static void h_lstrcmpiA(Emu *e, X86 *c) {
-    const char *a = S(A(0)), *b = S(A(1));
-    E_RET((uint32_t)word_weight_cmp((const uint8_t *)a, (int)strlen(a), (const uint8_t *)b, (int)strlen(b), 1));
+    E_RET((uint32_t)vc_lstrcmpiA(S(A(0)), S(A(1))));
 }
 static void h_CompareStringA(Emu *e, X86 *c) {
     uint32_t flags = A(1);
@@ -82,7 +50,7 @@ static void h_CompareStringA(Emu *e, X86 *c) {
     int na = (int32_t)A(3), nb = (int32_t)A(5);
     if (na < 0) na = (int)strlen(a);
     if (nb < 0) nb = (int)strlen(b);
-    int r = word_weight_cmp((const uint8_t *)a, na, (const uint8_t *)b, nb, (flags & 1) != 0);
+    int r = vc_word_cmp((const uint8_t *)a, na, (const uint8_t *)b, nb, (flags & 1) != 0);
     E_RET(r + 2);
 }
 static void h_MultiByteToWideChar(Emu *e, X86 *c) {
