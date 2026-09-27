@@ -51,3 +51,21 @@ typedef struct VocUnit {
 // voiced periods from codebook spectra (delta-coded against the previous voiced frame) through the
 // inverse FFT, unvoiced ones from the noise table. NULL if index < 0, fft_n > 512 or out of memory.
 VocUnit *voc_unit_decode(int index, const VocVoice *v, VocSynthState *s);
+
+// @0x63675bc4 stdcall: free a unit and its arrays
+void voc_unit_free(VocUnit *u);
+// @0x636710da stdcall: place the pitch marks of a unit. For each frame, periods[f] < 0 is an unvoiced
+// stretch of -periods[f] samples; otherwise the pitch at the current position is interpolated from the
+// contour (times[], values[], npoints) and the frame's period resampled to it (or, with fixed_rate, the
+// period rate / pitch). Marks are emitted while they fall inside the frame's time span; per mark:
+// len[j] (samples), frame[j] (source frame index), sign[j] (+1, or -1 for every second repeat of an
+// unvoiced frame: played reversed). Returns the number of marks.
+int voc_pitch_marks(const float *periods, int nframes, float *len, float time_scale, float rate,
+                    const float *times, const float *values, int npoints, int fixed_rate, int unused,
+                    int32_t *frame, float *sign);
+// @0x63671429 stdcall: assemble the excitation: for each pitch mark j, source frame frames[j]'s
+// excitation period (at exc + sum of the earlier |periods|) is fitted to lens[j] samples at out+pos
+// (dsp_period: reversed when signs[j] is -1), scaled by the gain contour (times[], gains[]) at pos.
+void voc_excitation(const float *periods, int nframes, const float *exc, const float *lens, int count,
+                    const int32_t *frames, const float *signs, float *out, const float *times,
+                    const float *gains, int npoints, const float *window, int winn);

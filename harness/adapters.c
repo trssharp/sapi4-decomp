@@ -163,3 +163,17 @@ void hk_effect_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(effect_ctor(THIS(Effec
 void hk_voc_unit_decode(Emu *e, X86 *c) {
     E_RET(host_to_guest(voc_unit_decode(AI(0), GPH(VocVoice, A(1), sizeof(VocVoice)), GPH(VocSynthState, A(2), sizeof(VocSynthState)))));
 }
+
+void hk_voc_unit_free(Emu *e, X86 *c) { voc_unit_free(GPH(VocUnit, A(0), sizeof(VocUnit))); }
+// the extents of these arrays are data dependent (counts, frame indices); guest memory is contiguous,
+// so the host pointers are only range-checked at their start
+#define P0(T, a) ((a) ? (T *)(void *)x86_ptr(c, (a), 1) : (T *)NULL)
+void hk_voc_pitch_marks(Emu *e, X86 *c) {
+    E_RET(voc_pitch_marks(P0(const float, A(0)), AI(1), P0(float, A(2)), argf(c, 3), argf(c, 4), P0(const float, A(5)),
+                          P0(const float, A(6)), AI(7), AI(8), AI(9), P0(int32_t, A(10)), P0(float, A(11))));
+}
+void hk_voc_excitation(Emu *e, X86 *c) {
+    voc_excitation(P0(const float, A(0)), AI(1), P0(const float, A(2)), P0(const float, A(3)), AI(4),
+                   P0(const int32_t, A(5)), P0(const float, A(6)), P0(float, A(7)), P0(const float, A(8)),
+                   P0(const float, A(9)), AI(10), P0(const float, A(11)), AI(12));
+}
