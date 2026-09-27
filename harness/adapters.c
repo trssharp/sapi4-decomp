@@ -769,3 +769,22 @@ void hk_unit_init(Emu *e, X86 *c) {
     E_RET((uint32_t)unit_init(THIS(UnitStage), GPH(uint8_t, A(0), 0x40), GPH(uint8_t, A(1), 0x40), GPH(uint8_t, A(2), 4),
                               GPH(uint8_t, A(3), 0x8f8), AI(4), AI(5), A(6), A(7)));
 }
+
+void hk_effect_set_fir(Emu *e, X86 *c) { effect_set_fir(THIS(Effect), AI(0), GPH(const float, A(1), 4u * (uint32_t)AI(0))); }
+void hk_voc_gauss(Emu *e, X86 *c) {
+    x86_fpu_push(c, voc_gauss(GPH(int32_t, A(0), 4), GPH(float, A(1), 4), GPH(float, A(2), 4)));
+}
+void hk_voc_noise_make(Emu *e, X86 *c) { E_RET(host_to_guest(voc_noise_make(AI(0)))); }
+void hk_voc_sine_table(Emu *e, X86 *c) { voc_sine_table(AI(0), GPH(float, A(1), 8u * A(0))); }
+void hk_voc_fade_window(Emu *e, X86 *c) { E_RET(host_to_guest(voc_fade_window(AI(0)))); }
+void hk_voc_header_load(Emu *e, X86 *c) { E_RET(host_to_guest(voc_header_load(GPH(uint8_t, A(0), 4)))); }
+void hk_voc_codebook_load(Emu *e, X86 *c) { E_RET(host_to_guest(voc_codebook_load(GPH(uint8_t, A(0), 4)))); }
+void hk_voc_inventory_load(Emu *e, X86 *c) { E_RET(host_to_guest(voc_inventory_load(GPH(uint8_t, A(0), 4)))); }
+void hk_voc_setup(Emu *e, X86 *c) {
+    E_RET((uint32_t)voc_setup(THIS(VocSynthState), GPH(const VocVoice, A(0), sizeof(VocVoice)), AI(1)));
+}
+void hk_voc_engine_init(Emu *e, X86 *c) {
+    E_RET((uint32_t)voc_engine_init(THIS(VocEngine), GPH(uint8_t, A(0), 0x40), GPH(uint8_t, A(1), 0x40), AI(2), AI(3),
+                                    GPH(uint8_t, A(4), 4), AI(5), A(6), A(7), AI(8), A(9), A(10)));
+}
+void hk_voc_init(Emu *e, X86 *c) { voc_init(THIS(VocEngine), AI(0)); }

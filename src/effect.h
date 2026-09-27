@@ -69,3 +69,6 @@ GPTR(const EffectPreset) effect_preset(Effect *self, int mode);
 int16_t effect_init(Effect *self, int mode, int rate);
 // @0x6367fee8 thiscall: constructor (preset and shrink are left uninitialised, as in the original)
 Effect *effect_ctor(Effect *self);
+// @0x6367fe99 thiscall: install n FIR coefficients (kept by reference) and give every stage a fresh
+// zeroed history of n floats
+void effect_set_fir(Effect *self, int32_t n, const float *coef);

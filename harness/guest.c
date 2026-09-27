@@ -3,6 +3,7 @@
 // hooked function's frame) and runs the original with emu_call. A portable build has no stubs: a
 // function listed here must be decompiled before it links.
 #include "hooks.h"
+#include "crt_vc.h"
 #include "unitsel.h"
 #include "containers.h"
 #include "voice.h"
@@ -71,11 +72,6 @@ int32_t voc_resample(uint32_t obj, uint32_t method, float *in, GPTR(float) *out,
     return r;
 }
 
-void voc_init(VocEngine *v, int32_t style) {
-    uint32_t a[1] = { (uint32_t)style };
-    emu_cpu(decomp_emu)->s.r[ECX] = host_to_guest_ptr(v);
-    guest_call(0x636819e6, 1, a);
-}
 void voc_resample_flush(uint32_t obj, uint32_t method) {
     emu_cpu(decomp_emu)->s.r[ECX] = obj;
     guest_call(method, 0, NULL);
@@ -121,4 +117,13 @@ int32_t user_lex_load(UserLex *t) { uint32_t a[1] = { host_to_guest_ptr(t) }; re
 int32_t senone_tree_load_old(void *stg, const char *name, const void *ps, GPTR(SenoneTree) *out) {
     uint32_t a[4] = { host_to_guest_ptr(stg), host_to_guest_ptr(name), host_to_guest_ptr(ps), host_to_guest_ptr(out) };
     return (int32_t)guest_call(0x636727fd, 4, a);
+}
+
+uint32_t voc_resampler_new(int slot) {
+    static const uint32_t size[4] = { 0x19c, 0x138, 0x138, 0xa0 };
+    static const uint32_t ctor[4] = { 0x63678180, 0x6367801c, 0x63677eb8, 0x636782e4 };
+    uint32_t obj = host_to_guest_ptr(vc_malloc(size[slot]));
+    if (!obj) return 0;
+    emu_cpu(decomp_emu)->s.r[ECX] = obj;
+    return guest_call(ctor[slot], 0, NULL);
 }

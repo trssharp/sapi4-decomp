@@ -192,3 +192,13 @@ Effect *effect_ctor(Effect *self) {
     for (int i = 0; i < 5; i++) self->stage[i] = 0;
     return self;
 }
+
+void effect_set_fir(Effect *self, int32_t n, const float *coef) {
+    GPSET(self->coef, (float *)coef);
+    self->ncoef = n;
+    for (int32_t i = 0; i < self->nstages; i++) {
+        Allpass *ap = GP(Allpass, self->stage[i]);
+        if (ap->fir) vc_free(GP(void, ap->fir));
+        GPSET(ap->fir, (float *)vc_calloc((size_t)(uint32_t)n, 4));
+    }
+}

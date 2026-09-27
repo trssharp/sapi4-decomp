@@ -26,6 +26,7 @@ typedef struct VocVoice {
     GPTR(const float) sine; // 0x34 sin table for the FFT
     GPTR(const float) window;  // 0x38 (fft_n) cross-fade window for dsp_fit_period
     GPTR(const int8_t) noise;  // 0x3c noise table
+    int32_t _40;            // 0x40 set to 0
 } VocVoice;
 
 // one decoded unit (malloc'd, 0x20 bytes)
@@ -106,7 +107,7 @@ typedef struct VocEngine {
     int32_t _00;
     int32_t pcm16;          // 0x04 1: 16-bit output (0: 8-bit)
     uint32_t rate;          // 0x08 sample rate
-    uint8_t _0c[4];
+    uint32_t rate_out;      // 0x0c the sample rate asked for (a converter is set up for some pairs)
     uint32_t msg;           // 0x10 notification message
     int32_t chunks;         // 0x14 chunks sent since the queue was last empty
     uint32_t hwnd;          // 0x18
@@ -142,8 +143,16 @@ void voc_send_audio(VocEngine *v, const FloatBuf *pcm, int32_t n);
 // a sample-rate converter object's convert method (not decompiled; never reached by the corpus)
 int32_t voc_resample(uint32_t obj, uint32_t method, float *in, GPTR(float) *out, int32_t n);
 // the engine's table of voice modes (per mode: the mode descriptions; +0x90c of each is its name)
-typedef struct ModeTable { uint8_t _00[0x14]; int32_t count; GPTR(GPTR(const uint8_t)) modes; } ModeTable;
-// @0x636819e6 thiscall (not decompiled yet): (re)initialise the synthesizer for character `style`
+typedef struct ModeTable {
+    uint8_t _00[0x14];
+    int32_t count;                      // 0x14
+    GPTR(GPTR(const uint8_t)) modes;    // 0x18
+    int32_t loaded;                     // 0x1c the voice's Inventory has been loaded (shared by engines)
+    GPTR(VocVoice) inv;                 // 0x20 it
+} ModeTable;
+// @0x636819e6 thiscall: apply character `style` of the engine's mode (0: back to plain): the mode's
+// records switch on whisper (1), an FIR (2) or IIR (3) filter with their coefficients, a room/RoboSoft
+// effect (4) and its FIR coefficients (6)
 void voc_init(VocEngine *v, int32_t style);
 // @0x6367ddfb stdcall: returns its argument
 uint32_t identity32(uint32_t x);
@@ -151,3 +160,31 @@ uint32_t identity32(uint32_t x);
 void voc_resample_flush(uint32_t obj, uint32_t method);
 // @0x63681ede thiscall: the synthesis thread's loop; @0x636822a1 its thread procedure
 int32_t voc_thread_loop(VocEngine *v);
+
+// @0x63675c95 stdcall: a Gaussian deviate (Box-Muller over MSVCRT rand; pairs, the second cached in *b)
+float voc_gauss(int32_t *have, float *a, float *b);
+// @0x63675d45 stdcall: n bytes of Gaussian noise (sigma 50, rounded half away from zero)
+int8_t *voc_noise_make(int32_t n);
+// @0x636850c0 stdcall: sin(pi * i / n) over a full period of 2n entries, for the FFT
+void voc_sine_table(int32_t n, float *out);
+// @0x63685172 stdcall: raised-cosine fade (1 + cos(pi * i / n)) / 2, n entries
+float *voc_fade_window(int32_t n);
+// @0x63672010 stdcall: the Inventory header (noise length, LPC order, codebook counts, FFT size) and
+// the tables derived from it
+VocVoice *voc_header_load(void *stm);
+// @0x63671f8d stdcall: one codebook (count, dim, count * dim floats)
+Codebook *voc_codebook_load(void *stm);
+// @0x636720f4 stdcall: the whole Inventory stream: header, the three codebook sets, the unit blobs
+VocVoice *voc_inventory_load(void *stm);
+// @0x63671063 thiscall: bind the synthesizer to a loaded voice (filter state, LPC memory); 1 = ok
+int32_t voc_setup(VocSynthState *s, const VocVoice *v, int32_t unused);
+// @0x63681688 thiscall: the synthesis thread's set-up: queues, output format, notification target;
+// loads the voice's Inventory once per mode (cached in the mode table, under a lock), sets up an
+// optional sample-rate converter (22050/11025 -> 8000, 8000 -> 11025, 22050 -> 16000) and the
+// synthesizer, then applies the starting character. 1, or E_FAIL
+int32_t voc_engine_init(VocEngine *v, uint8_t *qin, uint8_t *qout, int32_t mode, int32_t style, void *stg,
+                        int32_t pcm16, uint32_t rate, uint32_t rate_out, int32_t no_load, uint32_t hwnd,
+                        uint32_t msg);
+// the sample-rate converters' constructors (C++; not decompiled, never reached by the corpus).
+// by resample[] slot: 0 22050 -> 8000, 1 22050 -> 16000, 2 11025 -> 8000, 3 8000 -> 11025
+uint32_t voc_resampler_new(int slot);
