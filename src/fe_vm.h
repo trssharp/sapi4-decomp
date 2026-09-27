@@ -135,3 +135,10 @@ int16_t vm_match(int inst, int32_t at, int32_t back);
 // so that rules whose characters do not occur are skipped. AL = whether any rule applied (the rest of
 // EAX as the original leaves it).
 uint32_t vm_main(int inst, int32_t mode, int32_t s, int16_t *pend);
+
+// helpers of the rule procedures (fe_procs.c)
+// @0x6368b468 / 0x6368b526 stdcall: machine A's prosody-tag numbers into the word object
+void tag_number(int16_t a, int16_t b, int16_t c);
+void tag_pair(int16_t a, int16_t b, int16_t c);
+// @0x636905f9 stdcall: spaces minus 0x11 marks on tape 0 in [a, b)
+int32_t count_words(int16_t a, int16_t b);

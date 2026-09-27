@@ -453,3 +453,37 @@ LEXF(6369844e, 0x636cefd0, 11)
 LEXF(63697f78, 0x636cdba8, 9)
 LEXF(63697ad1, 0x636cd1d0, 13)
 LEXF(6369971c, 0x636d4078, 10)
+void hk_vm_proc_6369a4ea(Emu *e, X86 *c) { E_RET(vm_proc(2, 21, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_636993f8(Emu *e, X86 *c) { E_RET(vm_proc(2, 25, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_63698f1a(Emu *e, X86 *c) { E_RET(vm_proc(2, 26, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_63698a3e(Emu *e, X86 *c) { E_RET(vm_proc(2, 27, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_63698594(Emu *e, X86 *c) { E_RET(vm_proc(2, 34, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_636980bf(Emu *e, X86 *c) { E_RET(vm_proc(2, 35, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_63697c17(Emu *e, X86 *c) { E_RET(vm_proc(2, 36, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_6369773d(Emu *e, X86 *c) { E_RET(vm_proc(2, 53, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_636972c7(Emu *e, X86 *c) { E_RET(vm_proc(2, 54, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_lex_bsearch8w_0(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)lex_bsearch8w(0x636cf1e0, A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }
+void hk_lex_bsearch8w_1(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)lex_bsearch8w(0x636d2db0, A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }
+void hk_lex_bsearch8w_2(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)lex_bsearch8w(0x636d01a0, A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }
+void hk_lex_bsearch16(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & 0xffff0000u) | (uint16_t)lex_bsearch16(0x636c2a30, A(0), (uint16_t)A(1), (uint16_t)A(2), (uint8_t)A(3))); }
+void hk_tapes_printable(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | (uint32_t)tapes_printable((int16_t)A(0), (int16_t)A(1))); }
+void hk_vm_proc_6369986b(Emu *e, X86 *c) { E_RET(vm_proc(2, 22, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_lex_trie_lookup(Emu *e, X86 *c) { E_RET((uint32_t)lex_trie_lookup((uint16_t)A(0), (uint16_t)A(1))); }
+void hk_lex_trie_step(Emu *e, X86 *c) { E_RET(lex_trie_step(A(0), (uint8_t)A(1), GPH(uint32_t, A(2), 4), GPH(uint32_t, A(3), 4))); }
+void hk_lex_skip_node(Emu *e, X86 *c) { lex_skip_node(); E_RET(c->s.r[EAX]); }
+void hk_lex_huff_branches(Emu *e, X86 *c) { E_RET(lex_huff_branches()); }
+void hk_lex_huff_letter(Emu *e, X86 *c) { E_RET(lex_huff_letter()); }
+void hk_lex_huff_step(Emu *e, X86 *c) { E_RET(lex_huff_step()); }
+void hk_lex_huff_size(Emu *e, X86 *c) { E_RET(lex_huff_size()); }
+void hk_lex_huff_value(Emu *e, X86 *c) { E_RET(lex_huff_value()); }
+void hk_lex_raw19(Emu *e, X86 *c) { E_RET(lex_raw19()); }
+void hk_vm_proc_6368b383(Emu *e, X86 *c) { E_RET(vm_proc(0, 11, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_6369048f(Emu *e, X86 *c) { E_RET(vm_proc(1, 4, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_63690633(Emu *e, X86 *c) { E_RET(vm_proc(1, 5, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_63690215(Emu *e, X86 *c) { E_RET(vm_proc(1, 7, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_6369024b(Emu *e, X86 *c) { E_RET(vm_proc(1, 8, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_6369382c(Emu *e, X86 *c) { E_RET(vm_proc(2, 30, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_vm_proc_63693a03(Emu *e, X86 *c) { E_RET(vm_proc(2, 42, GPH(int16_t, A(0), 2), GPH(int16_t, A(1), 2), c->s.r[EAX])); }
+void hk_tag_number(Emu *e, X86 *c) { tag_number((int16_t)A(0), (int16_t)A(1), (int16_t)A(2)); E_RET(c->s.r[EAX]); }
+void hk_tag_pair(Emu *e, X86 *c) { tag_pair((int16_t)A(0), (int16_t)A(1), (int16_t)A(2)); E_RET(c->s.r[EAX]); }
+void hk_count_words(Emu *e, X86 *c) { E_RET((uint32_t)count_words((int16_t)A(0), (int16_t)A(1))); }

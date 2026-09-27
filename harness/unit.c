@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <math.h>
 
 static Emu *E;
@@ -1224,6 +1225,7 @@ static void t_main(int iter) {
         heap_restore(&h0); memcpy(gp(gaddr(dbase), dsize), d0, dsize);
         if (tp) *tp = tsave;
         free(d0); free(h0.mem);
+        emu_free(E, blk);
         return;
     }
     r1 &= 0xff;
@@ -1242,6 +1244,7 @@ static void t_main(int iter) {
     main_runs++; main_applied += r1 != 0;
     if (tp) *tp = tsave;
     free(d0); free(d1); free(h0.mem); free(h1.mem);
+    emu_free(E, blk);
 }
 
 // the decompiled rule procedures (the wrappers run whole rule sets) against the originals
@@ -1287,6 +1290,7 @@ static void t_proc(int iter) {
     if (!call_bounded(fnp, 2, a, &r1)) {
         heap_restore(&h0); memcpy(gp(gaddr(dbase), dsize), d0, dsize);
         free(d0); free(h0.mem);
+        emu_free(E, blk);
         return;
     }
     r1 &= 0xff;
@@ -1308,6 +1312,7 @@ static void t_proc(int iter) {
     heap_check(what, iter, &h1);
     proc_runs++;
     free(d0); free(d1); free(h0.mem); free(h1.mem);
+    emu_free(E, blk);
 }
 
 // the lexicon helpers: key packing and the n-bit field arrays
@@ -1335,6 +1340,281 @@ static void t_lex(int iter) {
     uint32_t idx = (uint32_t)rndi(0, 30000);
     uint32_t e1 = call(0x6369a47b, 1, &idx), e2 = lex_field18((uint16_t)idx);
     check("lex_field18", iter, "EAX", &e1, &e2, 4);
+}
+
+// a dictionary lookup against the original, on words taken from the dictionary itself (by unpacking a
+// random key) half of the time
+static int lex_found;
+static const struct { int dict, inst, n; uint32_t fn; } lexprocs[] = {
+    { 0, 2, 21, 0x6369a4ea }, { 1, 2, 53, 0x6369773d }, { 2, 2, 35, 0x636980bf }, { 3, 2, 27, 0x63698a3e },
+    { 4, 2, 34, 0x63698594 }, { 5, 2, 26, 0x63698f1a }, { 6, 2, 25, 0x636993f8 }, { 7, 2, 36, 0x63697c17 },
+    { 8, 2, 54, 0x636972c7 },
+};
+static void t_lexlookup(int iter) {
+    int w = iter % (int)(sizeof lexprocs / sizeof lexprocs[0]);
+    const LexDict *d = &lex_dicts[lexprocs[w].dict];
+    const RuleVM *vm = &rule_vm[2];
+    static const uint32_t toff[6] = { 0x585, 0xb05, 0x1085, 0x1605, 0x438e, 5 };
+    uint32_t blk = galloc(0x5000);
+    uint8_t *b = gp(blk, 0x5000);
+    for (int i = 0; i < 0x5000; i++) b[i] = (uint8_t)rndi(0x41, 0x5a);
+    for (int q = 0; q < 6; q++) wr32(C, gaddr(vm->tape[q]), blk + toff[q]);
+    uint8_t *ta = b + toff[0];
+    int16_t left = (int16_t)rndi(20, 60), n = (int16_t)rndi(0, d->maxlen);
+    const uint8_t *fm = gp(gaddr(d->first_map), 256), *cm = gp(gaddr(d->code_map), 256);
+    if (iter & 1) {
+        // a real entry: pick a column with entries, an entry, and unpack its key
+        const uint8_t *row = gp(gaddr(d->rows) + (uint32_t)n * (uint32_t)d->row_stride, 64);
+        #define LO(c) (d->range == LEX_RANGE_WORD ? (int)(row[4 + 2 * (c)] | row[5 + 2 * (c)] << 8) : (int)row[4 + (c)])
+        #define HI(c) (d->range == LEX_RANGE_WORD ? (int)(row[6 + 2 * (c)] | row[7 + 2 * (c)] << 8) : (int)row[5 + (c)])
+        int col = -1, tries = 0;
+        do { col = rndi(0, 24); } while (!(LO(col) < HI(col)) && ++tries < 100);
+        int first = -1;
+        for (int c = 0x21; c < 0xff; c++) if (fm[c] == col) { first = c; break; }
+        if (first >= 0 && tries < 100) {
+            int lo = LO(col), hi = HI(col);
+            int r = rndi(lo, hi - 1);
+            ta[left] = (uint8_t)first;
+            if (n > 0) {
+                uint8_t width = *(uint8_t *)gp(gaddr(d->widths) + (uint32_t)n, 1);
+                uint16_t base = (uint16_t)(row[2] | row[3] << 8);
+                const uint8_t *key = gp(gaddr(d->keys) + (uint16_t)(width * r + base), width);
+                #undef LO
+                #undef HI
+                uint32_t bitpos = 0;
+                for (int i = 0; i < n; i++, bitpos += d->codebits) {
+                    uint32_t v = 0;
+                    for (int j = 0; j < d->codebits; j++) {
+                        uint32_t bp = bitpos + (uint32_t)j;
+                        v = v << 1 | ((key[bp >> 3] >> (7 - (bp & 7))) & 1u);
+                    }
+                    int ch = -1;
+                    for (int c = 0x21; c < 0xff; c++) if (cm[c] == v) { ch = c; break; }
+                    ta[left + 1 + i] = (uint8_t)(ch < 0 ? 0x41 : ch);
+                }
+            }
+        }
+    }
+    uint32_t gl = galloc(8);
+    int16_t l1 = (int16_t)(left + 1), len = (int16_t)(left + n + 1);
+    memcpy(gp(gl, 2), &l1, 2); memcpy(gp(gl + 4, 2), &len, 2);
+    const uint32_t dbase = 0x6371c000, dsize = 0x1e0b0;
+    uint8_t *d0 = malloc(dsize); memcpy(d0, gp(gaddr(dbase), dsize), dsize);
+    uint8_t *blk0 = malloc(0x5000); memcpy(blk0, b, 0x5000);
+    uint32_t a[2] = { gl, gl + 4 };
+    uint32_t r1 = call(lexprocs[w].fn, 2, a) & 0xff;
+    uint8_t *d1 = malloc(dsize); memcpy(d1, gp(gaddr(dbase), dsize), dsize);
+    uint8_t *blk1 = malloc(0x5000); memcpy(blk1, b, 0x5000);
+    uint8_t lr1[8]; memcpy(lr1, gp(gl, 8), 8);
+    memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+    memcpy(b, blk0, 0x5000);
+    memcpy(gp(gl, 2), &l1, 2); memcpy(gp(gl + 4, 2), &len, 2);
+    uint32_t r2 = vm_callback(lexprocs[w].inst, (uint8_t)lexprocs[w].n, gp(gl, 2), gp(gl + 4, 2));
+    char what[40]; snprintf(what, sizeof what, "lex_lookup %d", lexprocs[w].dict);
+    if (getenv("VDBG")) for (int i = 0; i < 0x5000; i++) if (blk1[i] != b[i]) fprintf(stderr, "  blk +%x: orig %02x C %02x\n", i, blk1[i], b[i]);
+    if (getenv("VDBG")) for (uint32_t i = 0; i < dsize; i++) if (d1[i] != ((uint8_t *)gp(gaddr(dbase), dsize))[i]) fprintf(stderr, "  .data %08x: orig %02x C %02x\n", dbase + i, d1[i], ((uint8_t *)gp(gaddr(dbase), dsize))[i]);
+    check(what, iter, "AL", &r1, &r2, 4);
+    check(what, iter, "tapes", blk1, b, 0x5000);
+    check(what, iter, "left/len", lr1, gp(gl, 8), 8);
+    check(what, iter, ".data", d1, gp(gaddr(dbase), dsize), dsize);
+    lex_found += r1 != 0;
+    free(d0); free(d1); free(blk0); free(blk1);
+    emu_free(E, blk);
+}
+
+// the main lexicon (the trie) against the original, on common words and random letter strings
+static int lexmain_found;
+static void t_lexmain(int iter) {
+    static const char *words[] = { "the", "of", "and", "to", "in", "is", "you", "that", "it", "he", "was", "for", "on",
+        "are", "as", "with", "his", "they", "at", "be", "this", "have", "from", "or", "one", "had", "by", "word", "but",
+        "not", "what", "all", "were", "we", "when", "your", "can", "said", "there", "use", "an", "each", "which", "she",
+        "do", "how", "their", "if", "will", "up", "other", "about", "out", "many", "then", "them", "these", "so", "some",
+        "her", "would", "make", "like", "him", "into", "time", "has", "look", "two", "more", "write", "go", "see",
+        "number", "no", "way", "could", "people", "my", "than", "first", "water", "been", "call", "who", "oil", "its",
+        "now", "find", "long", "down", "day", "did", "get", "come", "made", "may", "part", "quick", "brown", "fox",
+        "jumps", "over", "lazy", "dog", "forest", "runs", "away", "knight", "through", "thought", "psychology",
+        "rhythm", "island", "colonel", "wednesday", "microsoft", "speech", "synthesis", "pneumonia", "yacht", "don't",
+        "it's", "o'clock", "e-mail", "mr.", "dr.", "etc.", "antidisestablishmentarianism", "supercalifragilistic" };
+    const RuleVM *vm = &rule_vm[2];
+    static const uint32_t toff[6] = { 0x585, 0xb05, 0x1085, 0x1605, 0x438e, 5 };
+    uint32_t blk = galloc(0x5000);
+    uint8_t *b = gp(blk, 0x5000);
+    for (int i = 0; i < 0x5000; i++) b[i] = (uint8_t)rndi(0x61, 0x7a);
+    for (int q = 0; q < 6; q++) wr32(C, gaddr(vm->tape[q]), blk + toff[q]);
+    uint8_t *ta = b + toff[0];
+    int16_t left = (int16_t)rndi(20, 60), n;
+    static char **dict; static int ndict = -1;
+    if (ndict < 0) {                        // the system word list, if there is one
+        ndict = 0;
+        FILE *f = fopen("/usr/share/dict/words", "r");
+        char line[64];
+        if (f) {
+            dict = malloc(sizeof(char *) * 300000);
+            while (ndict < 300000 && fgets(line, sizeof line, f)) {
+                size_t l = strcspn(line, "\r\n");
+                if (l == 0 || l > 30) continue;
+                line[l] = 0;
+                for (size_t i = 0; i < l; i++) line[i] = (char)tolower((unsigned char)line[i]);
+                dict[ndict++] = strdup(line);
+            }
+            fclose(f);
+        }
+        // keep the words the lexicon has (found with the C lookup; each is then checked against the original)
+        int kept = 0;
+        for (int i = 0; i < ndict; i++) {
+            int16_t l = (int16_t)strlen(dict[i]);
+            memcpy(ta + 30, dict[i], (size_t)l);
+            uint32_t sw = rd32(C, gaddr(LEX_CUR_WORD));
+            uint8_t sb = *(uint8_t *)gp(gaddr(LEX_CUR_BIT), 1);
+            if (lex_trie_lookup(30, (uint16_t)(30 + l - 1)) >= 0) dict[kept++] = dict[i];
+            wr32(C, gaddr(LEX_CUR_WORD), sw);
+            *(uint8_t *)gp(gaddr(LEX_CUR_BIT), 1) = sb;
+        }
+        fprintf(stderr, "lexicon: %d of %d listed words are in it\n", kept, ndict);
+        ndict = kept;
+    }
+    if (iter % 3 == 1 && ndict > 0) {
+        const char *w = dict[rnd() % (uint32_t)ndict];
+        n = (int16_t)strlen(w);
+        memcpy(ta + left, w, (size_t)n);
+    } else if (iter % 3) {
+        const char *w = words[rnd() % (sizeof words / sizeof words[0])];
+        n = (int16_t)strlen(w);
+        memcpy(ta + left, w, (size_t)n);
+    } else n = (int16_t)rndi(1, 12);
+    uint32_t gl = galloc(8);
+    int16_t l1 = (int16_t)(left + 1), len = (int16_t)(left + n);
+    memcpy(gp(gl, 2), &l1, 2); memcpy(gp(gl + 4, 2), &len, 2);
+    const uint32_t dbase = 0x6371c000, dsize = 0x1e0b0;
+    uint8_t *d0 = malloc(dsize); memcpy(d0, gp(gaddr(dbase), dsize), dsize);
+    uint8_t *blk0 = malloc(0x5000); memcpy(blk0, b, 0x5000);
+    uint32_t a[2] = { gl, gl + 4 };
+    uint32_t r1 = call(0x6369986b, 2, a) & 0xff;
+    uint8_t *d1 = malloc(dsize); memcpy(d1, gp(gaddr(dbase), dsize), dsize);
+    uint8_t *blk1 = malloc(0x5000); memcpy(blk1, b, 0x5000);
+    uint8_t lr1[8]; memcpy(lr1, gp(gl, 8), 8);
+    memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+    memcpy(b, blk0, 0x5000);
+    memcpy(gp(gl, 2), &l1, 2); memcpy(gp(gl + 4, 2), &len, 2);
+    uint32_t r2 = vm_callback(2, 22, gp(gl, 2), gp(gl + 4, 2));
+    check("lex_main", iter, "AL", &r1, &r2, 4);
+    check("lex_main", iter, "tapes", blk1, b, 0x5000);
+    check("lex_main", iter, "left/len", lr1, gp(gl, 8), 8);
+    if (getenv("VDBG")) for (uint32_t i = 0; i < dsize; i++) if (d1[i] != ((uint8_t *)gp(gaddr(dbase), dsize))[i]) fprintf(stderr, "  .data %08x: orig %02x C %02x\n", dbase + i, d1[i], ((uint8_t *)gp(gaddr(dbase), dsize))[i]);
+    check("lex_main", iter, ".data", d1, gp(gaddr(dbase), dsize), dsize);
+    lexmain_found += r1 != 0;
+    free(d0); free(d1); free(blk0); free(blk1);
+    emu_free(E, blk);
+}
+
+// the procedures with tape work of their own, on tapes drawn from the symbols they look at
+static int procx_runs;
+static void t_procx(int iter) {
+    static const struct { int inst, n; const char *alpha[4]; } px[] = {
+        { 0, 11, { "0123456789-\x1e\x1e\x1d\x1f\x69\x5d abc", "", "", "" } },
+        { 1, 4, { "ab ab ab ~,", "", "abPS", "     ~NV" } },
+        { 1, 5, { "aB aB aGb ?(", "", "abX", "PPNV ab" } },
+        { 1, 5, { "Gb Gb a", "", "XXXvab", "NNVVV a" } },
+        { 1, 7, { "abc", "", "", "xyz" } },
+        { 1, 8, { "abc", "", "\x11@@NJR12H0123456789~ ~", "&  ~" } },
+        { 2, 30, { "abcdefghijklmnopqrstuvwxyz", "", "", "" } },
+        { 2, 42, { "ab(c)d", "", "", "" } },
+    };
+    int w = iter % (int)(sizeof px / sizeof px[0]);
+    int k = px[w].inst, n = px[w].n;
+    static const uint32_t tabs[3] = { 0x63721cd0, 0x63721f30, 0x63721f80 };
+    static const uint32_t tsel[3] = { 0x63739204, 0x637393dc, 0x637395bc };
+    static const uint32_t toff[6] = { 0x585, 0xb05, 0x1085, 0x1605, 0x438e, 5 };
+    uint32_t fnp = rd32(C, gaddr(tabs[k]) + 4u * (uint32_t)n) - M->base + MSTTS_PREF_BASE;
+    const RuleVM *vm = &rule_vm[k];
+    uint32_t blk = galloc(0x5000);
+    uint8_t *b = gp(blk, 0x5000);
+    for (int i = 0; i < 0x5000; i++) b[i] = (uint8_t)rndi(0x61, 0x7a);
+    memset(b, 0, 5);
+    int16_t cnt = (int16_t)rndi(0, 0x27f); memcpy(b + 0x438c, &cnt, 2);
+    for (int q = 0; q < 4; q++) {
+        const char *al = px[w].alpha[q];
+        size_t na = strlen(al);
+        if (!na) continue;
+        for (int i = 0; i < 0x500; i++) b[toff[q] + i] = (uint8_t)al[rnd() % na];
+    }
+    int16_t left = (int16_t)rndi(20, 60), len = (int16_t)(left + rndi((w == 7 || w == 2) ? 6 : 2, 40));
+    if (px[w].inst == 1 && px[w].n == 8) {     // B, 8: 0x11, '@', a class letter, then 'H' and a digit
+        static const char cls[] = "@NJR12V";
+        uint8_t *t2 = b + toff[2];
+        int o = left + rndi(-1, 3);
+        t2[o] = 0x11; t2[o + 1 + rndi(0, 2)] = '@';
+        int at = o + 1; while (t2[at] != '@') at++;
+        int q = at + 1; if (rnd() & 1) t2[q++] = '~';
+        t2[q] = (uint8_t)cls[rnd() % 7];
+        int h = q + 2 + rndi(0, 2);
+        for (int i = q + 2; i < h; i++) t2[i] = (rnd() & 1) ? ' ' : '~';
+        t2[h] = (rnd() % 5) ? 'H' : 'x';
+        int d = h + 1; if (rnd() & 1) t2[d++] = '~';
+        t2[d] = (uint8_t)('0' + rndi(0, 9));
+        for (int i = d + 1; i < len + 10; i++) t2[i] = (uint8_t)"ab~ JNV"[rnd() % 7];
+        uint8_t *t3 = b + toff[3];
+        for (int i = h; i < h + 20; i++) t3[i] = (uint8_t)((rnd() % 6) ? 'x' : (rnd() & 1) ? '&' : ' ');
+    }
+    if (w == 2) {           // B, 5: words, one of them "?B..." after a 'P' mark
+        uint8_t *t0 = b + toff[0];
+        for (int i = 0; i < 0x500; i++) t0[i] = (uint8_t)((rnd() % 3) ? 'a' + rnd() % 3 : ' ');
+        int si = rndi(left + 2, len - 1);
+        t0[si - 2] = ' '; t0[si] = 'B';
+        b[toff[3] + si - 1] = 'P';
+        for (int i = 0; i < 0x500; i++) if (rnd() % 8) b[toff[2] + i] = 'a';
+    }
+    if (w == 7) {           // C, 42 needs "(...)" in the segment
+        int o = rndi(left, len - 4), c = rndi(o + 1, len - 2);
+        b[toff[0] + o] = '('; b[toff[0] + c] = ')';
+        for (int i = left - 1; i < o; i++) if (b[toff[0] + i] == '(' || b[toff[0] + i] == ')') b[toff[0] + i] = 'a';
+        for (int i = o + 1; i < c; i++) if (b[toff[0] + i] == '(' || b[toff[0] + i] == ')') b[toff[0] + i] = 'b';
+    }
+    if (w == 0) b[toff[0] + len + rndi(0, 20)] = 0x5d;
+    if (px[w].inst == 1 && px[w].n == 4)      // spaces between words on tape 0 where tape 3 has them
+        for (int i = 0; i < 0x500; i++) if (b[toff[3] + i] == ' ' && (rnd() & 1)) b[toff[0] + i] = ' ';
+    for (int q = 0; q < 6; q++) {
+        wr32(C, gaddr(vm->tape[q]), blk + toff[q]);
+        if (q < 5) wr32(C, gaddr(tsel[k]) + 4u * (q + 1), blk + toff[q] - 1);
+    }
+    int16_t top = 0x501; memcpy(gp(gaddr(vm->top), 2), &top, 2);
+    wr32(C, gaddr(run_vm[k].abort), 0);
+    if (k == 0) wr32(C, gaddr(0x63739274), blk);
+    uint32_t gl = galloc(8);
+    memcpy(gp(gl, 2), &left, 2); memcpy(gp(gl + 4, 2), &len, 2);
+    uint32_t sp = C->s.r[ESP];
+    memset(gp(sp - 0x8000, 0x8000), 0x5a, 0x8000);
+    const uint32_t dbase = 0x6371c000, dsize = 0x1e0b0;
+    uint8_t *d0 = malloc(dsize); memcpy(d0, gp(gaddr(dbase), dsize), dsize);
+    HeapSnap h0; heap_snap(&h0);
+    uint8_t *blk0 = malloc(0x5000); memcpy(blk0, b, 0x5000);
+    uint32_t a[2] = { gl, gl + 4 }, r1;
+    if (!call_bounded(fnp, 2, a, &r1)) {
+        heap_restore(&h0); memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+        free(d0); free(h0.mem); free(blk0); emu_free(E, blk);
+        return;
+    }
+    r1 &= 0xff;
+    HeapSnap h1; heap_snap(&h1);
+    uint8_t *d1 = malloc(dsize); memcpy(d1, gp(gaddr(dbase), dsize), dsize);
+    uint8_t *blk1 = malloc(0x5000); memcpy(blk1, b, 0x5000);
+    uint8_t lr1[8]; memcpy(lr1, gp(gl, 8), 8);
+    heap_restore(&h0);
+    memcpy(gp(gaddr(dbase), dsize), d0, dsize);
+    memcpy(b, blk0, 0x5000);
+    memcpy(gp(gl, 2), &left, 2); memcpy(gp(gl + 4, 2), &len, 2);
+    memset(gp(sp - 0x8000, 0x8000), 0x5a, 0x8000);
+    uint32_t r2 = vm_callback(k, (uint8_t)n, gp(gl, 2), gp(gl + 4, 2));
+    char what[40]; snprintf(what, sizeof what, "proc %d/%d", k, n);
+    if (getenv("VDBG")) for (int i = 0; i < 0x5000; i++) if (blk1[i] != b[i]) fprintf(stderr, "  %s case %d blk +%x: orig %02x C %02x\n", what, iter, i, blk1[i], b[i]);
+    check(what, iter, "AL", &r1, &r2, 4);
+    check(what, iter, "tapes", blk1, b, 0x5000);
+    check(what, iter, "left/len", lr1, gp(gl, 8), 8);
+    check(what, iter, ".data", d1, gp(gaddr(dbase), dsize), dsize);
+    heap_check(what, iter, &h1);
+    procx_runs++;
+    free(d0); free(d1); free(blk0); free(blk1); free(h0.mem); free(h1.mem);
+    emu_free(E, blk);
 }
 
 int main(int argc, char **argv) {
@@ -1371,12 +1651,15 @@ int main(int argc, char **argv) {
         t_apply(it);
         t_exec(it);
         t_lex(it);
+        t_lexlookup(it);
+        t_lexmain(it);
+        t_procx(it);
         if (it < 600) t_main(it);
         if (it < 900) t_proc(it);
         if (it < 500) t_viterbi(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }
-    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped);
+    printf("unit: %d checks, %d mismatches (vm_skip_block compared on %d cases, vm_match matched in %d, vm_main applied rules in %d of %d, %d rule procedures, %d random cases skipped: the original did not finish; dictionary words found %d, lexicon words found %d)\n", cases, fails, vm_skips, match_hits, main_applied, main_runs, proc_runs, skipped, lex_found, lexmain_found);
     return fails ? 1 : 0;
 }
