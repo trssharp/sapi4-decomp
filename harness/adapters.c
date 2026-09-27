@@ -13,6 +13,7 @@
 #include "unitsel.h"
 #include "fe_small.h"
 #include "fe_rules.h"
+#include "queue.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -283,3 +284,15 @@ void hk_rule_bsearch_1(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | rule_bse
 void hk_rule_bsearch_2(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | rule_bsearch(DLLVAR(const uint8_t, 0x636ce848), A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }
 void hk_rule_bsearch_3(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | rule_bsearch(DLLVAR(const uint8_t, 0x636d3e78), A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }
 void hk_rule_bsearch_4(Emu *e, X86 *c) { E_RET((c->s.r[EAX] & ~0xffu) | rule_bsearch(DLLVAR(const uint8_t, 0x63718da0), A(0), (uint8_t)A(1), (uint8_t)A(2), (uint8_t)A(3))); }
+
+#define Q THIS(Queue)
+void hk_queue_grow(Emu *e, X86 *c) { E_RET(queue_grow(Q, A(0))); }
+void hk_queue_update_events(Emu *e, X86 *c) { queue_update_events(Q); }
+void hk_queue_count(Emu *e, X86 *c) { E_RET(queue_count(Q)); }
+void hk_queue_is_full(Emu *e, X86 *c) { E_RET(queue_is_full(Q)); }
+void hk_queue_push(Emu *e, X86 *c) { E_RET(queue_push(Q, A(0) ? GPH(QItem, A(0), 20) : NULL)); }
+void hk_queue_push_n(Emu *e, X86 *c) { uint32_t n = A(1); E_RET(queue_push_n(Q, A(0) ? GPH(QItem, A(0), n ? 20u * n : 1) : NULL, n)); }
+void hk_queue_pop(Emu *e, X86 *c) { E_RET(queue_pop(Q, A(0) ? GPH(QItem, A(0), 20) : NULL)); }
+void hk_locked_get_58(Emu *e, X86 *c) { E_RET(locked_get_58(GPH(uint8_t, c->s.r[ECX], 0x70))); }
+void hk_locked_get_11c(Emu *e, X86 *c) { E_RET(locked_get_11c(GPH(uint8_t, c->s.r[ECX], 0x134))); }
+void hk_locked_get_2cc(Emu *e, X86 *c) { E_RET(locked_get_2cc(GPH(uint8_t, c->s.r[ECX], 0x2e4))); }
