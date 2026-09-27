@@ -93,10 +93,11 @@ static int32_t pos_of(GPTR(EvNode) n) {
 }
 
 // (list links are kept as the stored values: a null link is 0 in both builds)
+typedef GPTR(EvNode) EvLink;
 int32_t ev_place(uint8_t *w) {
     int32_t hi = W16(w, 2), s = W16(w, 0);
-    GPTR(EvNode) ed = WPTR(w, 0xb4ac);
-    GPTR(EvNode) first = 0, prev = 0, last1 = 0, last2 = 0;
+    EvLink ed = WPTR(w, 0xb4ac);
+    EvLink first = 0, prev = 0, last1 = 0, last2 = 0;
     int32_t cnt = 0, acc = 0;
     if (ed) {
         if (GP(EvNode, ed)->kind == 1) {
@@ -120,7 +121,7 @@ int32_t ev_place(uint8_t *w) {
                 if (cnt) GP(EvNode, prev)->next = ed;
                 else first = ed;
                 cnt++;
-                GPTR(EvNode) cur = ed;
+                EvLink cur = ed;
                 EvNode *c = GP(EvNode, cur);
                 ed = c->next;
                 prev = cur;
@@ -147,7 +148,7 @@ int32_t ev_place(uint8_t *w) {
             n->ch = w[0x585 + i];
             n->pos = acc;
             n->len = *pd;
-            GPTR(EvNode) nn;
+            EvLink nn;
             GPSET(nn, n);
             if (cnt) GP(EvNode, prev)->next = nn;
             else first = nn;
