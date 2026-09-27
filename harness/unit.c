@@ -10,6 +10,7 @@
 #include "lpc.h"
 #include "codec.h"
 #include "effect.h"
+#include "tags.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -377,6 +378,69 @@ static void t_effect_life(int iter) {
     check("effect_ctor", iter, "object", &orig, gp(g2, sizeof(Effect)), sizeof orig);
 }
 
+static void rnd_tag(char *t, int max) {
+    static const char *kw[] = { "chr", "wrd", "com", "ctx", "emp", "eng", "eow", "fs", "hs", "mrk", "pau", "pit",
+                                "prn", "pro", "prt", "rst", "spd", "vce", "vol", "btp", "etp", "tp", "foo", "Spd", "PIT", "x" };
+    static const char *bits[] = { "=", "\\", "\"", ",", ":", ";", "<", "{", "}", " ", "12", "007", "-3", "a", "\\\\" };
+    int n = 0;
+    t[n++] = '\\';
+    if (rnd() % 8) n += snprintf(t + n, max - n, "%s", kw[rnd() % 26]);
+    int k = rndi(0, 4);
+    if (rnd() % 3 == 0) { n += snprintf(t + n, max - n, "=%u\\", rnd() % 100000); k = 0; }
+    else if (rnd() % 3 == 0) { n += snprintf(t + n, max - n, "=\"Wh%sis\"\\", (rnd() & 1) ? "\\\\" : ""); k = 0; }
+    for (int i = 0; i < k && n < max - 8; i++) n += snprintf(t + n, max - n, "%s", bits[rnd() % 15]);
+    if (rnd() % 4) t[n++] = '\\';
+    t[n] = 0;
+}
+
+static void t_tags(int iter) {
+    char tag[200];
+    rnd_tag(tag, 150);
+    if (tag[1] == '=') tag[1] = 'q';   // "\=" crashes the original (see tag_parse)
+    int len = (int)strlen(tag) + 1;
+    uint32_t gt = galloc((uint32_t)len), go = galloc(sizeof(TagOut));
+    memcpy(gp(gt, (uint32_t)len), tag, (size_t)len);
+    memset(gp(go, sizeof(TagOut)), 0, sizeof(TagOut));
+    HeapSnap h0; heap_snap(&h0);
+    uint32_t a[2] = { gt, go };
+    uint32_t r1 = call(0x63681315, 2, a);
+    HeapSnap h1; heap_snap(&h1);
+    TagOut o1; memcpy(&o1, gp(go, sizeof o1), sizeof o1);
+    heap_restore(&h0);
+    memcpy(gp(gt, (uint32_t)len), tag, (size_t)len);
+    memset(gp(go, sizeof(TagOut)), 0, sizeof(TagOut));
+    uint32_t r2 = (uint32_t)tag_parse(gp(gt, (uint32_t)len), gp(go, sizeof(TagOut)));
+    check("tag_parse", iter, "EAX", &r1, &r2, 4);
+    check("tag_parse", iter, "out", &o1, gp(go, sizeof o1), sizeof o1);
+    heap_check("tag_parse", iter, &h1);
+    free(h0.mem); free(h1.mem);
+    // the lexer on its own over the whole string, token by token, buffer of random size
+    int n = rndi(1, 40);
+    uint32_t gpp = galloc(4), gb = galloc(64);
+    uint32_t toks1[64], toks2[64]; int nt = 0;
+    char b1[64 * 64]; 
+    wr32(C, gpp, gt);
+    memset(gp(gb, 64), 0, 64);
+    for (nt = 0; nt < 60; nt++) {
+        uint32_t a2[3] = { gpp, gb, (uint32_t)n };
+        toks1[nt] = call(0x63680f65, 3, a2);
+        memcpy(b1 + 64 * nt, gp(gb, 64), 64);
+        if (toks1[nt] == TOK_END || rd32(C, gpp) >= gt + (uint32_t)len) { nt++; break; }
+    }
+    uint32_t end1 = rd32(C, gpp);
+    wr32(C, gpp, gt);
+    memset(gp(gb, 64), 0, 64);
+    char b2[64];
+    for (int i = 0; i < nt; i++) {
+        toks2[i] = (uint32_t)tag_lex(gp(gpp, 4), gp(gb, 64), n);
+        memcpy(b2, gp(gb, 64), 64);
+        check("tag_lex", iter, "buffer", b1 + 64 * i, b2, 64);
+    }
+    check("tag_lex", iter, "tokens", toks1, toks2, 4u * (uint32_t)nt);
+    uint32_t end2 = rd32(C, gpp);
+    check("tag_lex", iter, "position", &end1, &end2, 4);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: unit <dir with msttssyn.dll> [iterations]\n"); return 2; }
     int iters = argc > 2 ? atoi(argv[2]) : 300;
@@ -399,6 +463,7 @@ int main(int argc, char **argv) {
         t_lpc(it);
         t_period(it);
         t_effect(it);
+        t_tags(it);
         if (it < 300) t_effect_life(it);
         if (emu_failed(E)) { fprintf(stderr, "guest fault: %s\n", emu_error(E)); return 1; }
     }

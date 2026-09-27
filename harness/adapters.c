@@ -7,6 +7,7 @@
 #include "codec.h"
 #include "effect.h"
 #include "voice.h"
+#include "tags.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -181,3 +182,19 @@ void hk_voc_excitation(Emu *e, X86 *c) {
 void hk_voc_synth_unit(Emu *e, X86 *c) {
     E_RET(voc_synth_unit(THIS(VocSynthState), GPH(VocRequest, A(0), sizeof(VocRequest))));
 }
+
+// the tag lexer: pp is a guest char** (a pointer to a guest pointer), buffers are bounded by n
+#define PP(i) GPH(uint32_t, A(i), 4)
+void hk_tag_lex_number(Emu *e, X86 *c) { E_RET(tag_lex_number(PP(0), A(1) ? GPH(int32_t, A(1), 4) : NULL)); }
+void hk_tag_lex_word(Emu *e, X86 *c) { int n = AI(2); E_RET(tag_lex_word(PP(0), GPH(char, A(1), n > 0 ? n + 1 : 1), n)); }
+void hk_tag_keyword(Emu *e, X86 *c) { E_RET(tag_keyword((const char *)x86_ptr(c, A(0), 1))); }
+void hk_tag_lex_string(Emu *e, X86 *c) { int n = AI(2); E_RET(tag_lex_string(PP(0), GPH(char, A(1), n > 1 ? n + 1 : 2), n)); }
+void hk_tag_lex_brace(Emu *e, X86 *c) { int n = AI(2); E_RET(tag_lex_brace(PP(0), GPH(char, A(1), n > 1 ? n + 1 : 2), n)); }
+void hk_tag_lex(Emu *e, X86 *c) { int n = AI(2); E_RET(tag_lex(PP(0), GPH(char, A(1), n > 4 ? n + 1 : 5), n)); }
+#define TAGH(name) void hk_##name(Emu *e, X86 *c) { int n = AI(4); \
+    E_RET(name(AI(0), PP(1), GPH(TagOut, A(2), sizeof(TagOut)), GPH(char, A(3), n > 4 ? n + 1 : 5), n)); }
+TAGH(tag_parse_unsupported)
+TAGH(tag_parse_flag)
+TAGH(tag_parse_number)
+TAGH(tag_parse_string)
+void hk_tag_parse(Emu *e, X86 *c) { E_RET(tag_parse((char *)x86_ptr(c, A(0), 1), GPH(TagOut, A(1), sizeof(TagOut)))); }

@@ -11,8 +11,10 @@ extern _Thread_local uint8_t *decomp_guest_mem;
 #define GPSET(field, p) ((field) = (p) ? (uint32_t)((uint8_t *)(p) - decomp_guest_mem) : 0u)
 // a global of the original DLL, by its preferred-base address (hook build: the live copy in the image)
 extern uint32_t decomp_load_delta;
-#define DLLVAR(T, addr) ((T *)(void *)(decomp_guest_mem + (uint32_t)(addr) + decomp_load_delta))
+#define DLLVAR(T, addr) ((T *)(void *)(decomp_guest_mem + (uint32_t)((uint32_t)(addr) + decomp_load_delta)))
 #define LAYOUT(T, field, off) _Static_assert(__builtin_offsetof(T, field) == (off), #T "." #field)
+// a code address stored in the DLL's data (a function pointer table), as its preferred-base address
+#define CODEADDR(v) ((uint32_t)(v) - decomp_load_delta)
 #else
 #define GPTR(T) T *
 #define GP(T, v) ((T *)(v))
@@ -21,5 +23,6 @@ extern uint32_t decomp_load_delta;
 // (no definition yet: a portable build that uses one fails to link until data extraction exists)
 void *decomp_dll_data(uint32_t addr);
 #define DLLVAR(T, addr) ((T *)decomp_dll_data(addr))
+#define CODEADDR(v) ((uint32_t)(uintptr_t)(v))   // extracted tables keep the original addresses
 #define LAYOUT(T, field, off)
 #endif
