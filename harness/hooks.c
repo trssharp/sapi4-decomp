@@ -1,4 +1,7 @@
+#define _XOPEN_SOURCE 600
 #include "hooks.h"
+#include <ucontext.h>
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"   // ucontext: fine for a dev-only harness
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,14 +14,89 @@ void *vc_malloc(size_t n) {
     uint32_t p = emu_malloc(decomp_emu, (uint32_t)n);
     return p ? decomp_guest_mem + p : NULL;
 }
+void *vc_realloc(void *p, size_t n) {
+    uint32_t r = emu_realloc(decomp_emu, p ? (uint32_t)((uint8_t *)p - decomp_guest_mem) : 0, (uint32_t)n);
+    return r ? decomp_guest_mem + r : NULL;
+}
 void vc_free(void *p) {
     if (p) emu_free(decomp_emu, (uint32_t)((uint8_t *)p - decomp_guest_mem));
 }
 
-// KERNEL32 Sleep as the emulator does it: advance the virtual clock and yield (here: once the hook
-// returns, since a host function cannot be suspended halfway)
+// ---------------------------------------------------------------- suspendable hooks
+// A hook marked HOOKY (it may Sleep or block, like the original) runs its C on a coroutine stack, one
+// per guest thread. When the C yields or blocks, the coroutine is parked and the host call returns
+// with "retry" set: the guest thread stays on the trap instruction, other guest threads run, and when
+// this one is scheduled again the trap re-executes and the coroutine resumes where it stopped - so a
+// yield or a wait happens at the same point of the guest's execution as in the original.
+enum { CO_IDLE, CO_RUNNING, CO_SUSPENDED };
+enum { REQ_NONE, REQ_YIELD, REQ_BLOCK };
+typedef struct Coro {
+    ucontext_t ctx, back;
+    int state, req;
+    EmuHostFn fn;
+    Emu *e;
+    X86 *c;
+    char *stack;
+} Coro;
+#define CORO_STACK (512 * 1024)
+static _Thread_local Coro coros[EMU_MAX_THREADS + 1];
+static _Thread_local Coro *cur_coro;
+
+static void coro_entry(void) {
+    Coro *co = cur_coro;
+    co->fn(co->e, co->c);
+    co->state = CO_IDLE;
+    co->req = REQ_NONE;
+    swapcontext(&co->ctx, &co->back);
+}
+
+void decomp_coro_run(Emu *e, X86 *c, EmuHostFn fn) {
+    int slot = e->cur ? e->cur->id : 0;
+    if (slot < 0 || slot > EMU_MAX_THREADS) x86_fault(c, "decomp: bad thread id");
+    Coro *co = &coros[slot];
+    if (co->state == CO_SUSPENDED) {
+        if (co->fn != fn) x86_fault(c, "decomp: thread re-entered a different hook while one is suspended");
+    } else {
+        if (!co->stack) co->stack = malloc(CORO_STACK);
+        co->fn = fn;
+        co->e = e;
+        co->c = c;
+        getcontext(&co->ctx);
+        co->ctx.uc_stack.ss_sp = co->stack;
+        co->ctx.uc_stack.ss_size = CORO_STACK;
+        co->ctx.uc_link = NULL;
+        makecontext(&co->ctx, coro_entry, 0);
+    }
+    co->state = CO_RUNNING;
+    co->req = REQ_NONE;
+    Coro *prev = cur_coro;
+    cur_coro = co;
+    swapcontext(&co->back, &co->ctx);
+    cur_coro = prev;
+    if (co->state == CO_IDLE) return;              // finished: host_dispatch returns to the guest
+    co->state = CO_SUSPENDED;                       // parked: stay on the trap, let others run
+    if (co->req == REQ_BLOCK) emu_block(e);
+    else {
+        e->retry = 1;
+        e->stop_reason = STOP_YIELD;
+        c->stop = 1;
+    }
+}
+
+static void coro_suspend(int req) {
+    Coro *co = cur_coro;
+    co->req = req;
+    swapcontext(&co->ctx, &co->back);
+}
+
+// KERNEL32 Sleep as the emulator does it: advance the virtual clock and yield to the other threads.
+// Outside a coroutine (a plain HOOK) the yield can only happen once the hook returns.
 void vc_sleep(uint32_t ms) {
     decomp_emu->vtime += ms;
+    if (cur_coro) {
+        coro_suspend(REQ_YIELD);
+        return;
+    }
     decomp_emu->stop_reason = STOP_YIELD;
     emu_cpu(decomp_emu)->stop = 1;
 }

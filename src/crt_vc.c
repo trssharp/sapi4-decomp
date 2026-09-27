@@ -50,6 +50,7 @@ recurse:;
 #include <stdlib.h>
 void *vc_malloc(size_t n) { return malloc(n); }
 void vc_free(void *p) { free(p); }
+void *vc_realloc(void *p, size_t n) { return realloc(p, n); }
 void vc_sleep(uint32_t ms) { (void)ms; }
 static _Thread_local uint32_t vc_seed = 1;
 int vc_rand(void) {

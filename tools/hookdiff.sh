@@ -1,7 +1,8 @@
 #!/bin/sh
 # Differential test over a wider corpus than the golden hashes: every mode x several texts (tags,
 # spelling, numbers, long sentences, repeated utterances on a warm engine), rendered with the original
-# (SAPI4_HOOKS=none) and with every decompiled function hooked in; the PCM must be identical.
+# (SAPI4_HOOKS=none) and with every decompiled function hooked in; the PCM and the guest heap state
+# afterwards (allocation order and sizes) must be identical.
 #   tools/hookdiff.sh [modes-filter]
 set -u
 cd "$(dirname "$0")/.."
@@ -29,10 +30,11 @@ while read -r mode; do
     t=""; [ "$tagged" = 1 ] && t="-t"
     for h in none all; do
       # shellcheck disable=SC2086
-      SAPI4_HOOKS=$h timeout 120 "$BIN" -d data/msttsl -m "$mode" $t -r 2 -o "$OUT/$h/$slug.wav" "$text" 2>/dev/null
+      SAPI4_HOOKS=$h SAPI4_HOOK_STATS=1 timeout 120 "$BIN" -d data/msttsl -m "$mode" $t -r 2 -o "$OUT/$h/$slug.wav" "$text" 2>&1 >/dev/null | grep -E "^guest heap|WARNING" > "$OUT/$h/$slug.heap"
     done
     n=$((n + 1))
     if ! cmp -s "$OUT/none/$slug.wav" "$OUT/all/$slug.wav"; then echo "DIFF $slug"; fail=1; fi
+    if ! cmp -s "$OUT/none/$slug.heap" "$OUT/all/$slug.heap"; then echo "HEAP DIFF $slug: $(cat "$OUT/all/$slug.heap") vs $(cat "$OUT/none/$slug.heap")"; fail=1; fi
   done < "$OUT/texts.txt"
 done < "$OUT/modes.txt"
-[ $fail = 0 ] && echo "HOOKDIFF: $n renders identical with and without hooks" || { echo "HOOKDIFF: MISMATCH"; exit 1; }
+[ $fail = 0 ] && echo "HOOKDIFF: $n renders identical with and without hooks (PCM and final guest heap)" || { echo "HOOKDIFF: MISMATCH"; exit 1; }

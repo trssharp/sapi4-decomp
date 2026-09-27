@@ -8,6 +8,7 @@
 #include "effect.h"
 #include "voice.h"
 #include "tags.h"
+#include "containers.h"
 #include <string.h>
 
 #define A(i) x86_arg(c, (i))
@@ -198,3 +199,18 @@ TAGH(tag_parse_flag)
 TAGH(tag_parse_number)
 TAGH(tag_parse_string)
 void hk_tag_parse(Emu *e, X86 *c) { E_RET(tag_parse((char *)x86_ptr(c, A(0), 1), GPH(TagOut, A(1), sizeof(TagOut)))); }
+
+#define STR(i) ((const char *)x86_ptr(c, A(i), 1))
+void hk_hash_lookup(Emu *e, X86 *c) {
+    E_RET(hash_lookup(A(0) ? GPH(HashTable, A(0), sizeof(HashTable)) : NULL, A(1) ? STR(1) : NULL, A(2) ? GPH(int32_t, A(2), 4) : NULL));
+}
+void hk_named_index(Emu *e, X86 *c) { E_RET(named_index(GPH(NamedTable, A(0), sizeof(NamedTable)), STR(1))); }
+void hk_named_item(Emu *e, X86 *c) { E_RET(named_item(GPH(NamedTable, A(0), sizeof(NamedTable)), AI(1))); }
+void hk_prefix_cmp(Emu *e, X86 *c) { E_RET(prefix_cmp(STR(0), STR(1), GPH(int32_t, A(2), 4))); }
+void hk_intvec_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(intvec_ctor(THIS(IntVec)))); }
+void hk_intvec_free_data(Emu *e, X86 *c) { intvec_free_data(THIS(IntVec)); }
+void hk_intvec_reserve(Emu *e, X86 *c) { intvec_reserve(THIS(IntVec), AI(0), AI(1)); }
+void hk_vecarray_ctor(Emu *e, X86 *c) { E_RET(host_to_guest(vecarray_ctor(THIS(VecArray)))); }
+void hk_vecarray_destroy(Emu *e, X86 *c) { vecarray_destroy(THIS(VecArray)); }
+void hk_vecarray_init(Emu *e, X86 *c) { E_RET(vecarray_init(THIS(VecArray), AI(0), AI(1), AI(2))); }
+void hk_blob_copy80(Emu *e, X86 *c) { E_RET(blob_copy80(GPH(uint8_t, A(0), 0x50), GPH(Blob, A(1), sizeof(Blob)))); }

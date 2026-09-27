@@ -15,7 +15,7 @@ def main():
     root = os.path.join(os.path.dirname(__file__), "..")
     hooks = {}
     for line in open(os.path.join(root, "harness", "hooklist.h")):
-        m = re.match(r"HOOK\(0x([0-9a-f]+),\s*(\w+)", line)
+        m = re.match(r"HOOKY?\(0x([0-9a-f]+),\s*(\w+)", line)
         if m:
             hooks[int(m.group(1), 16)] = m.group(2)
     F = json.load(open(os.path.join(work, "functions.json")))["functions"]

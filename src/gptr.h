@@ -8,7 +8,8 @@
 extern _Thread_local uint8_t *decomp_guest_mem;
 #define GPTR(T) uint32_t
 #define GP(T, v) ((T *)(void *)(decomp_guest_mem + (v)))
-#define GPSET(field, p) ((field) = (p) ? (uint32_t)((uint8_t *)(p) - decomp_guest_mem) : 0u)
+static inline uint32_t decomp_g(const void *p) { return p ? (uint32_t)((const uint8_t *)p - decomp_guest_mem) : 0u; }
+#define GPSET(field, p) ((field) = decomp_g(p))   // (p evaluated once)
 // a global of the original DLL, by its preferred-base address (hook build: the live copy in the image)
 extern uint32_t decomp_load_delta;
 #define DLLVAR(T, addr) ((T *)(void *)(decomp_guest_mem + (uint32_t)((uint32_t)(addr) + decomp_load_delta)))

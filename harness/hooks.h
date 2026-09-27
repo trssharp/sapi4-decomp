@@ -32,3 +32,6 @@ extern _Thread_local Emu *decomp_emu;   // load base - preferred base
 
 // SAPI4_HOOK_STATS=1 (Mac builds): print how often each installed hook ran, to stderr
 void decomp_report(Emu *e);
+
+// runs a hook's adapter on this guest thread's coroutine (HOOKY hooks, see hooks.c)
+void decomp_coro_run(Emu *e, X86 *c, EmuHostFn fn);
