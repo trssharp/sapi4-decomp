@@ -6,6 +6,15 @@ manner of OpenTV (github.com/RetroBunn/tv-decomp). Work in progress: see docs/PR
 
 No Microsoft binaries or voice data are in this repository, and none may be added (`.gitignore`).
 
+## Bring your own engine
+
+This repository is code only. To build or run anything here you need your own copy of Microsoft's
+SAPI 4 engine from a SAPI 4 install: `msttssyn.dll` (Speech Build 4.0.4.2512, 851,456 bytes, SHA-256
+`a8a2ddb9b82b4325e1315f481302cd5ba9edcf3742425ed582370f1b3940f731`) and its voice files (`*.vce`,
+`*.cfg`). The portable build reads the engine's tables from that DLL at run time. A build that bakes the
+DLL's data or the voices in (`make port-render-full-check`, `make api-baked-check`) contains Microsoft's
+data, so keep it to yourself rather than redistributing it.
+
 ## Setup
 
 Put `msttssyn.dll` with its voice files (`*.vce`, `*.cfg`) in `data/msttsl/` (a symlink is fine) and the
@@ -55,3 +64,9 @@ run time (the tables stay Microsoft's, read where they are; relocated dwords bec
 `DLLVAR` / `DLLPTR` in src/ work without the emulator.
 
 Addresses everywhere are the DLL's own (preferred base 0x63670000).
+
+## Licence
+
+The code in this repository is MIT licensed (see `LICENSE`). That covers the code written here only:
+it grants no rights to Microsoft's engine, its data or its voices. Not affiliated with or endorsed by
+Microsoft.
