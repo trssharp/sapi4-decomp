@@ -1,0 +1,22 @@
+LIBRARY MSTTSSapi4
+EXPORTS
+ s4_shutdown
+ s4_abi_version
+ s4_init
+ s4_list_modes
+ s4_open
+ s4_close
+ s4_mode_info
+ s4_sample_rate
+ s4_get_limits
+ s4_get_pitch
+ s4_set_pitch
+ s4_get_speed
+ s4_set_speed
+ s4_get_volume
+ s4_set_volume
+ s4_speak
+ s4_stop
+ s4_reset
+
+ s4_speak_fragments

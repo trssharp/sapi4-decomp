@@ -4,7 +4,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#ifdef _WIN32
+#include <stdio.h>
+#else
 #include <sys/mman.h>
+#endif
+
+static void cfb_unmap(void *data, size_t len) {
+#ifdef _WIN32
+    (void)len;
+    free(data);
+#else
+    munmap(data, len);
+#endif
+}
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -38,17 +51,30 @@ static uint8_t *cfb_read_chain(Cfb *f, uint32_t s, size_t size, size_t *outlen) 
 static Cfb *cfb_parse(Cfb *f);
 
 Cfb *cfb_open(const char *path) {
+#ifdef _WIN32
+    FILE *file = fopen(path, "rb");
+    if (!file) return NULL;
+    if (fseek(file, 0, SEEK_END)) { fclose(file); return NULL; }
+    long length = ftell(file);
+    if (length < 512 || fseek(file, 0, SEEK_SET)) { fclose(file); return NULL; }
+    size_t map_len = (size_t)length;
+    void *map = malloc(map_len);
+    if (!map || fread(map, 1, map_len, file) != map_len) { free(map); fclose(file); return NULL; }
+    fclose(file);
+#else
     int fd = open(path, O_RDONLY);
     if (fd < 0) return NULL;
     struct stat st;
     if (fstat(fd, &st) != 0 || st.st_size < 512) { close(fd); return NULL; }
-    void *map = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    size_t map_len = (size_t)st.st_size;
+    void *map = mmap(NULL, map_len, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
     if (map == MAP_FAILED) return NULL;
+#endif
     Cfb *f = calloc(1, sizeof *f);
-    if (!f) { munmap(map, (size_t)st.st_size); return NULL; }
+    if (!f) { cfb_unmap(map, map_len); return NULL; }
     f->data = map;
-    f->len = (size_t)st.st_size;
+    f->len = map_len;
     f->mapped = 1;
     return cfb_parse(f);
 }
@@ -118,13 +144,14 @@ static Cfb *cfb_parse(Cfb *f) {
     f->refs = 1;
     return f;
 bad:
-    if (f->mapped) munmap((void *)f->data, f->len);
+    if (f->mapped) cfb_unmap((void *)f->data, f->len);
     free(f->fat); free(f);
     return NULL;
 }
 void cfb_release(Cfb *f) {
     if (--f->refs > 0) return;
-    if (f->mapped) munmap((void *)f->data, f->len); free(f->fat); free(f->mfat); free(f->ents); free(f->ministream); free(f);
+    if (f->mapped) cfb_unmap((void *)f->data, f->len);
+    free(f->fat); free(f->mfat); free(f->ents); free(f->ministream); free(f);
 }
 uint8_t *cfb_stream(Cfb *f, const CfbEntry *e, size_t *len) {
     if (e->size < f->cutoff) {
