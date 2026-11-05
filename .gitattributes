@@ -1,0 +1,4 @@
+# Preserve exact known-good 0.5.2 source bytes, including CRLF, in Git blobs.
+nvda/manifest.ini -text whitespace=cr-at-eol
+nvda/synthDrivers/msttsSapi4.py -text whitespace=cr-at-eol
+nvda/synthDrivers/_msttsSapi4Native.py -text whitespace=cr-at-eol
