@@ -66,7 +66,7 @@ directories produced identical final DLL bytes during integration verification.
 
 Provide an external immutable directory with all eleven files matching the exact
 SHA256 values in `native/resource_hashes.h` (also upstream tools/data.sha256):
-msttssyn.dll and the five VCE/five CFG pairs. Obtain them under your own license.
+msttssyn.dll plus five VCE/CFG pairs (eleven files total). Obtain them under your own license.
 The original DLL is read only as binary data, never LoadLibrary-loaded, executed
 or emulated by the native build. The resource parser is not a sandbox. Keep the
 directory immutable throughout use; validation does not protect against changes
